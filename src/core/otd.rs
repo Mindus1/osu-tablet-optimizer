@@ -397,4 +397,26 @@ mod tests {
             assert!(result.is_err(), "{name:?}");
         }
     }
+
+    #[test]
+    #[ignore = "reads the OpenTabletDriver settings on this machine (set OTD_DATA_DIR for portable installs)"]
+    fn real_settings_load() {
+        let data_dir = std::env::var_os("OTD_DATA_DIR")
+            .map(|dir| resolve_data_dir(Path::new(&dir)))
+            .or_else(default_data_dir)
+            .expect("no OpenTabletDriver settings found");
+
+        let settings = OtdSettings::load(&data_dir).unwrap();
+
+        eprintln!("{} {:#?}", settings.revision, settings.profiles);
+        assert!(!settings.profiles.is_empty());
+        for profile in &settings.profiles {
+            assert!(profile.mapping.area_width > 0.0 && profile.mapping.display_width > 0.0);
+            eprintln!(
+                "{}: size {:?}",
+                profile.tablet,
+                crate::core::tablets::tablet_size(&profile.tablet)
+            );
+        }
+    }
 }

@@ -9,7 +9,7 @@ Design spec: `docs/superpowers/specs/2026-10-09-osu-tablet-optimizer-design.md`
 ```sh
 cargo run
 cargo test                                  # real-replay tests skip without tests/fixtures/
-cargo test -- --ignored                     # scans the real osu! installs on this machine
+cargo test -- --ignored                     # real osu!/OTD installs on this machine; OTD_DATA_DIR=<folder> for portable OTD
 cargo clippy --all-targets -- -D warnings
 cargo fmt
 cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablets.tsv
