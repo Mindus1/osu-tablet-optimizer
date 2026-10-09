@@ -91,13 +91,13 @@ examples/update_tablets.rs   regenerates src/core/tablets.tsv from an OTD checko
 
 ## Roadmap (one feature branch → PR to `dev` each; each starts with a `writing-plans` plan for just that feature)
 
-1. `feature/app-shell`: Cargo project, sidebar + empty pages, `config.rs`, CI + release workflows, README skeleton
+1. `feature/app-shell`: Cargo project, sidebar + empty pages, CI + release workflows, README build section
 2. `feature/replay-parser`: `replay.rs` + tests
 3. `feature/beatmap-index`: `beatmap.rs` (stable + lazer, incremental, replay discovery, player auto-detect)
 4. `feature/hit-extraction`: `hits.rs` (mods, matching, filters)
 5. `feature/aim-fit`: `fit.rs` (synthetic recovery tests)
 6. `feature/otd-settings`: `otd.rs` + `tablets.rs` + `update_tablets` example (discovery, profiles, preset write, rotation convention test)
-7. `feature/replays-page`: Replays + Setup pages
+7. `feature/replays-page`: Replays + Setup pages, `config.rs` (its first consumer)
 8. `feature/analysis-page`: scatter + polar + metrics
 9. `feature/area-page`: area preview + export, the **suggested first release (0.1.0)**
 10. `feature/history`: snapshots, tagging, History page
