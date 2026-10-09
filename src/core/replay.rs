@@ -253,19 +253,19 @@ fn read_i64(r: &mut impl Read) -> Result<i64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const STABLE_VERSION: i32 = 20_250_107;
     const LAZER_VERSION: i32 = 30_000_017;
 
-    struct Osr<'a> {
-        version: i32,
-        player: &'a str,
-        legacy_mods: u32,
-        ticks: i64,
-        frames: &'a str,
-        score_info: Option<&'a str>,
+    pub(crate) struct Osr<'a> {
+        pub(crate) version: i32,
+        pub(crate) player: &'a str,
+        pub(crate) legacy_mods: u32,
+        pub(crate) ticks: i64,
+        pub(crate) frames: &'a str,
+        pub(crate) score_info: Option<&'a str>,
     }
 
     impl Default for Osr<'_> {
@@ -282,7 +282,7 @@ mod tests {
     }
 
     impl Osr<'_> {
-        fn bytes(&self) -> Vec<u8> {
+        pub(crate) fn bytes(&self) -> Vec<u8> {
             let mut b = vec![0];
             b.extend(self.version.to_le_bytes());
             push_string(&mut b, "0123456789abcdef0123456789abcdef");
