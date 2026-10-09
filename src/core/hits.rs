@@ -75,7 +75,7 @@ pub fn replay_samples(
     Ok((replay.header, samples))
 }
 
-pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
+fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
     ensure!(replay.header.is_standard(), "not an osu!standard replay");
     let difficulty = difficulty(beatmap, &replay.mods)?;
     let radius = 54.4 - 4.48 * difficulty.circle_size;
