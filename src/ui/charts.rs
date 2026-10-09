@@ -1,4 +1,4 @@
-use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text};
+use iced::widget::canvas::{self, Frame, Geometry, LineDash, Path, Stroke, Text};
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme, mouse};
 use osu_tablet_optimizer::core::aim::{self, Sector};
 
@@ -15,6 +15,14 @@ pub struct Scatter<'a> {
 
 pub struct Polar<'a> {
     pub sectors: &'a [Sector],
+}
+
+// Corners in tablet mm; the tablet is drawn when its size is known.
+pub struct AreaPreview {
+    pub tablet: Option<(f64, f64)>,
+    pub current: [(f64, f64); 4],
+    pub full: [(f64, f64); 4],
+    pub capped: [(f64, f64); 4],
 }
 
 impl<Message> canvas::Program<Message> for Scatter<'_> {
@@ -134,6 +142,87 @@ impl<Message> canvas::Program<Message> for Polar<'_> {
             });
             frame.stroke(&outline, stroke);
         }
+        vec![frame.into_geometry()]
+    }
+}
+
+impl<Message> canvas::Program<Message> for AreaPreview {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let palette = theme.extended_palette();
+        let mut points = [self.current, self.full, self.capped].concat();
+        if let Some(size) = self.tablet {
+            points.extend([(0.0, 0.0), size]);
+        }
+        let (min_x, max_x, min_y, max_y) = points.iter().fold(
+            (
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |(min_x, max_x, min_y, max_y), &(x, y)| {
+                (min_x.min(x), max_x.max(x), min_y.min(y), max_y.max(y))
+            },
+        );
+        let scale = (f64::from(bounds.width) / (max_x - min_x))
+            .min(f64::from(bounds.height) / (max_y - min_y));
+        let offset = (
+            (f64::from(bounds.width) - (max_x - min_x) * scale) / 2.0,
+            (f64::from(bounds.height) - (max_y - min_y) * scale) / 2.0,
+        );
+        let to_point = |(x, y): (f64, f64)| {
+            Point::new(
+                (offset.0 + (x - min_x) * scale) as f32,
+                (offset.1 + (y - min_y) * scale) as f32,
+            )
+        };
+
+        if let Some((width, height)) = self.tablet {
+            frame.fill_rectangle(
+                to_point((0.0, 0.0)),
+                Size::new((width * scale) as f32, (height * scale) as f32),
+                palette.background.weak.color,
+            );
+        }
+        let outline = |corners: &[(f64, f64); 4]| {
+            Path::new(|builder| {
+                builder.move_to(to_point(corners[0]));
+                for &corner in &corners[1..] {
+                    builder.line_to(to_point(corner));
+                }
+                builder.close();
+            })
+        };
+        let primary = Stroke::default()
+            .with_color(palette.primary.base.color)
+            .with_width(2.0);
+        frame.stroke(
+            &outline(&self.current),
+            Stroke::default()
+                .with_color(palette.background.base.text)
+                .with_width(1.0),
+        );
+        frame.stroke(
+            &outline(&self.full),
+            Stroke {
+                line_dash: LineDash {
+                    segments: &[6.0, 4.0],
+                    offset: 0,
+                },
+                ..primary
+            },
+        );
+        frame.stroke(&outline(&self.capped), primary);
         vec![frame.into_geometry()]
     }
 }
