@@ -187,7 +187,7 @@ fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {
     let profile =
         setup::profile(app).ok_or("OpenTabletDriver's settings aren't loaded; check Setup.")?;
     if !profile.absolute {
-        return Err("This profile is not in absolute mode; area suggestions need absolute mode.");
+        return Err(setup::RELATIVE_MODE);
     }
     if profile.mapping != analyzed {
         return Err("Your tablet area changed since the last analysis; analyze again.");
