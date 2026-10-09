@@ -945,3 +945,10 @@ git branch -vv | grep ': gone]' || true
 
 - Feature 7 (Replays page): run `Library::scan` in a background task. Load the cache from, and save it to, `dirs::data_dir()/osu-tablet-optimizer/library.json`. If `load` returns `Err` (corrupt cache), start from `Library::default()` and rescan. Build `beatmaps_by_md5()` once per render pass, not per row. Scan progress reporting gets added there.
 - Feature 4: open beatmaps through `beatmaps_by_md5()[md5].path`, and read whole replays with `BufReader`.
+- Feature 7, from the final review (deferred minors):
+  - `scan` replaces the whole library with what's under the given roots, so always pass every root. Don't scan a single folder for "Add files…".
+  - Check that user-chosen roots exist (`is_dir`) and say so if they don't. A missing root is otherwise silently empty.
+  - Make `save` atomic (write `library.json.tmp`, then rename it over the old file).
+  - Add a cache `version` field when title or header building changes.
+  - Treat a worker panic as unreadable (`catch_unwind`) if `rosu-map` ever panics on a malformed file.
+  - Wine: `BeatmapDirectory = D:\…` from a Wine stable install needs mapping to the Wine prefix's `drive_d`.
