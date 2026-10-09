@@ -627,4 +627,35 @@ mod tests {
 
         assert!(suggest(&replays(&samples), MAPPING, &Settings::default()).is_none());
     }
+
+    #[test]
+    #[ignore = "scans the osu! installs on this machine"]
+    fn real_replays_give_a_bounded_suggestion() {
+        use crate::core::{hits, library};
+
+        let mut library = library::Library::default();
+        library.scan(&library::default_roots());
+        let beatmaps = library.beatmaps_by_md5();
+        let mut replays: Vec<_> = library
+            .replays()
+            .filter(|(_, header)| header.mode == 0)
+            .collect();
+        replays.sort_by_key(|(_, header)| std::cmp::Reverse(header.played_at_ms));
+        let sessions: Vec<Vec<Sample>> = replays
+            .iter()
+            .take(300)
+            .filter_map(|(path, _)| hits::replay_samples(path, &beatmaps).ok())
+            .collect();
+        let current = Mapping {
+            rotation: 0.0,
+            ..MAPPING
+        };
+
+        let suggestion = suggest(&sessions, current, &Settings::default()).unwrap();
+
+        eprintln!("{suggestion:#?}");
+        assert!((suggestion.full.area_width / current.area_width - 1.0).abs() < 0.3);
+        assert!((suggestion.full.area_height / current.area_height - 1.0).abs() < 0.3);
+        assert!(suggestion.full.rotation.abs() < 20.0);
+    }
 }
