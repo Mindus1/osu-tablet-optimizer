@@ -584,7 +584,7 @@ mod tests {
     #[ignore = "scans the osu! installs on this machine"]
     fn real_replays_land_near_their_objects() {
         let mut library = library::Library::default();
-        library.scan(&library::default_roots());
+        library.scan(&library::default_roots(), &|_, _| {});
         let beatmaps = library.beatmaps_by_md5();
         let mut replays: Vec<_> = library
             .replays()

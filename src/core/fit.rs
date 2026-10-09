@@ -668,7 +668,7 @@ mod tests {
         use crate::core::{hits, library};
 
         let mut library = library::Library::default();
-        library.scan(&library::default_roots());
+        library.scan(&library::default_roots(), &|_, _| {});
         let beatmaps = library.beatmaps_by_md5();
         let mut replays: Vec<_> = library
             .replays()
