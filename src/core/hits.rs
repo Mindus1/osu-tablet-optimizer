@@ -28,7 +28,7 @@ const SUPPORTED_MODS: [&str; 31] = [
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sample {
-    // Object centre minus the cursor at the previous hit: where the player meant to move.
+    // Object center minus the cursor at the previous hit: where the player meant to move.
     pub intended: (f64, f64),
     // Cursor at this press minus the cursor at the previous hit: where they actually moved.
     pub actual: (f64, f64),

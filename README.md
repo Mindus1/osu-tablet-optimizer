@@ -16,7 +16,7 @@ Status: in development. Setup, the replay list, the analysis and area suggestion
 2. **Replays** lists your osu!standard replays, newest first.
    - **Filter:** by last session, 7 days, 30 days or all time, or search map titles.
    - **Add replays:** with *Add files…* or by dropping `.osr` files onto the window.
-   - **Select:** tick the replays you want analysed, then press *Analyze*.
+   - **Select:** tick the replays you want analyzed, then press *Analyze*.
 3. **Analysis** measures how your jumps land, over every jump of at least three circle radii in the selected replays. It needs at least 5 replays. Each number comes with a 90% range; when that range includes "no change", the page says *no clear effect*.
    - **Overshoot:** how much farther (+) or shorter (−) than intended your jumps travel.
    - **Rotation:** how many degrees your moves come out turned clockwise (+) or counter-clockwise (−).
@@ -24,12 +24,12 @@ Status: in development. Setup, the replay list, the analysis and area suggestion
    - **Shear:** a skew OpenTabletDriver can't correct; shown for information.
    - **Error scatter:** each dot is one jump's error, along the jump (right = too far) and across it. The circle is the hit radius.
    - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot. Stopping at the circle's edge is left out, as in the Overshoot number, and directions with fewer than 10 jumps are left open.
-   - When you change the selection or setup afterwards, the page says so; press *Analyse selected again* to update.
+   - When you change the selection or setup afterwards, the page says so; press *Analyze selected again* to update.
 4. **Area** draws the suggested tablet area over your current one and lists the numbers. It needs an analysis made with OpenTabletDriver's settings found, and a profile in absolute mode.
-   - **Capped step:** changes the size by at most 3% and the rotation by at most 2°. You can change these limits in Setup. Take this step, play a few sessions, then analyse again.
+   - **Capped step:** changes the size by at most 3% and the rotation by at most 2°. You can change these limits in Setup. Take this step, play a few sessions, then analyze again.
    - **Full fit:** the whole correction the analysis measured.
    - Size, aspect ratio and rotation stay as they are when the analysis shows no clear effect.
-   - **Export:** saves the area as an OpenTabletDriver preset named like `oto-2026-10-09-capped` and copies your other settings as they are. The area keeps its centre, moved only as far as needed to stay on the tablet. In OpenTabletDriver, apply the preset under *File → Presets*; if OpenTabletDriver is already running, use *Refresh presets* first.
+   - **Export:** saves the area as an OpenTabletDriver preset named like `oto-2026-10-09-capped` and copies your other settings as they are. The area keeps its center, moved only as far as needed to stay on the tablet. In OpenTabletDriver, apply the preset under *File → Presets*; if OpenTabletDriver is already running, use *Refresh presets* first.
 
 The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
 

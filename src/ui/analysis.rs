@@ -10,8 +10,8 @@ use osu_tablet_optimizer::core::fit::{Estimate, Mapping, Settings};
 use crate::app::{self, App};
 use crate::ui::{charts, setup};
 
-// Stands in for OpenTabletDriver's mapping when none is set up; the gain metrics shown here
-// don't depend on it, only the area suggestion (Area page) does.
+// Stands in for OpenTabletDriver's mapping when none is set up. Overshoot, rotation and the axis
+// ratio don't depend on it; shear and the area suggestion do.
 const NEUTRAL_MAPPING: Mapping = Mapping {
     area_width: 100.0,
     area_height: 56.25,
@@ -78,7 +78,7 @@ pub fn start(app: &mut App) -> Task<app::Message> {
     std::thread::spawn(move || {
         let paths: Vec<PathBuf> = selection.iter().cloned().collect();
         let mapping = otd_mapping.unwrap_or(NEUTRAL_MAPPING);
-        let report = aim::analyse(&paths, &library.beatmaps_by_md5(), mapping, &settings);
+        let report = aim::analyze(&paths, &library.beatmaps_by_md5(), mapping, &settings);
         let _ = sender.send(Arc::new(Analysis {
             selection,
             otd_mapping,
@@ -103,13 +103,13 @@ fn is_outdated(analysis: &Analysis, app: &App) -> bool {
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
     let state = &app.analysis;
-    let again = button("Analyse selected again").on_press_maybe(
+    let again = button("Analyze selected again").on_press_maybe(
         (!state.running && !app.replays.selected.is_empty())
             .then_some(app::Message::Analysis(Message::Run)),
     );
     let Some(analysis) = &state.last else {
         let hint = if state.running {
-            "Analysing…"
+            "Analyzing…"
         } else {
             "Select replays on the Replays page, then press Analyze."
         };
@@ -118,12 +118,12 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
 
     let report = &analysis.report;
     let summary = text(format!(
-        "{} replays analysed, {} skipped, {} jumps used.{}",
-        report.analysed,
+        "{} replays analyzed, {} skipped, {} jumps used.{}",
+        report.analyzed,
         report.skipped.len(),
         report.errors.len(),
         if state.running {
-            " Analysing again…"
+            " Analyzing again…"
         } else {
             ""
         }
@@ -211,7 +211,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     let mut page = column![row![summary, space::horizontal(), again].align_y(Center)].spacing(24);
     if !state.running && is_outdated(analysis, app) {
         page = page.push(text(
-            "The selection or setup changed since this analysis. Analyse again to update.",
+            "The selection or setup changed since this analysis. Analyze again to update.",
         ));
     }
     scrollable(page.push(numbers).push(charts).push(skipped)).into()

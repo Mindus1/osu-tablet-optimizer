@@ -91,15 +91,15 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         table_row("", "Current", "Capped step", "Full fit"),
         table_row(
             "Width",
-            &millimetres(current.0.area_width, None),
-            &millimetres(capped.0.area_width, Some(current.0.area_width)),
-            &millimetres(full.0.area_width, Some(current.0.area_width)),
+            &millimeters(current.0.area_width, None),
+            &millimeters(capped.0.area_width, Some(current.0.area_width)),
+            &millimeters(full.0.area_width, Some(current.0.area_width)),
         ),
         table_row(
             "Height",
-            &millimetres(current.0.area_height, None),
-            &millimetres(capped.0.area_height, Some(current.0.area_height)),
-            &millimetres(full.0.area_height, Some(current.0.area_height)),
+            &millimeters(current.0.area_height, None),
+            &millimeters(capped.0.area_height, Some(current.0.area_height)),
+            &millimeters(full.0.area_height, Some(current.0.area_height)),
         ),
         table_row(
             "Rotation",
@@ -108,7 +108,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             &format!("{:.2}°", full.0.rotation),
         ),
         table_row(
-            "Centre",
+            "Center",
             &position(current.1),
             &position(capped.1),
             &position(full.1),
@@ -137,7 +137,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     let settings = app.config.fit;
     notes = notes.push(text(format!(
         "The capped step changes the size by at most {}% and the rotation by at most {}°. \
-         Play a few sessions with it, then analyse again.",
+         Play a few sessions with it, then analyze again.",
         settings.max_size_step * 100.0,
         settings.max_rotation_step_deg
     )));
@@ -176,12 +176,12 @@ fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {
         analysis.report.suggestion.as_ref().ok_or(
             "The last analysis had too little data for a suggestion; see the Analysis page.",
         )?;
-    let analysed = analysis.otd_mapping.ok_or(
-        "The last analysis ran without OpenTabletDriver's settings. Choose its folder in Setup, then analyse again.",
+    let analyzed = analysis.otd_mapping.ok_or(
+        "The last analysis ran without OpenTabletDriver's settings. Choose its folder in Setup, then analyze again.",
     )?;
     if analysis.settings != app.config.fit {
         return Err(
-            "The analysis numbers in Setup changed since the last analysis; analyse again.",
+            "The analysis numbers in Setup changed since the last analysis; analyze again.",
         );
     }
     let profile =
@@ -189,8 +189,8 @@ fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {
     if !profile.absolute {
         return Err("This profile is not in absolute mode; area suggestions need absolute mode.");
     }
-    if profile.mapping != analysed {
-        return Err("Your tablet area changed since the last analysis; analyse again.");
+    if profile.mapping != analyzed {
+        return Err("Your tablet area changed since the last analysis; analyze again.");
     }
     Ok(Proposal {
         profile,
@@ -213,7 +213,7 @@ fn table_row<'a>(
     .into()
 }
 
-fn millimetres(value: f64, current: Option<f64>) -> String {
+fn millimeters(value: f64, current: Option<f64>) -> String {
     match current {
         Some(current) => format!("{value:.2} mm ({:+.1}%)", (value / current - 1.0) * 100.0),
         None => format!("{value:.2} mm"),

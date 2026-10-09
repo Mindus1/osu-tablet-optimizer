@@ -10,7 +10,7 @@ const MIN_SECTOR_SAMPLES: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sector {
-    // Centre of the movement-direction sector, degrees clockwise from right (screen y points down).
+    // Center of the movement-direction sector, degrees clockwise from right (screen y points down).
     pub direction: f64,
     // Mean distance travelled along the intended direction per intended distance, without the
     // fit's edge stop, so it agrees with the overshoot number.
@@ -22,7 +22,7 @@ pub struct Sector {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Report {
-    pub analysed: usize,
+    pub analyzed: usize,
     pub skipped: Vec<(PathBuf, String)>,
     // Usable samples only, as (along, across) the move in circle radii; +along is overshoot,
     // +across is to the clockwise side.
@@ -31,7 +31,7 @@ pub struct Report {
     pub suggestion: Option<Suggestion>,
 }
 
-pub fn analyse(
+pub fn analyze(
     paths: &[PathBuf],
     beatmaps: &HashMap<&str, library::Beatmap<'_>>,
     mapping: Mapping,
@@ -54,7 +54,7 @@ pub fn analyse(
     let suggestion = fit::suggest(&replays, mapping, settings);
     let edge_stop = suggestion.map_or(0.0, |suggestion| suggestion.edge_stop);
     Report {
-        analysed: replays.len(),
+        analyzed: replays.len(),
         skipped,
         errors: usable.iter().map(aligned_error).collect(),
         sectors: sectors(&usable, 16, edge_stop),
@@ -62,7 +62,7 @@ pub fn analyse(
     }
 }
 
-// Runs of neighbouring sectors with enough jumps to draw; a run covering every sector is a closed
+// Runs of neighboring sectors with enough jumps to draw; a run covering every sector is a closed
 // outline.
 pub fn outline_runs(sectors: &[Sector]) -> Vec<Vec<Sector>> {
     let thin = |sector: &Sector| sector.samples < MIN_SECTOR_SAMPLES;
@@ -214,7 +214,7 @@ mod tests {
             display_height: 1080.0,
         };
 
-        let report = analyse(
+        let report = analyze(
             std::slice::from_ref(&path),
             &HashMap::new(),
             mapping,
@@ -222,7 +222,7 @@ mod tests {
         );
         std::fs::remove_file(&path).unwrap();
 
-        assert_eq!(report.analysed, 0);
+        assert_eq!(report.analyzed, 0);
         assert_eq!(
             report.skipped,
             [(path, "beatmap not found in the osu! library".to_string())]

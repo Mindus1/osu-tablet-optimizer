@@ -28,8 +28,8 @@ impl Number {
 
     fn label(self) -> &'static str {
         match self {
-            Number::MinJump => "Shortest jump analysed (circle radii)",
-            Number::MaxError => "Largest miss still analysed (circle radii)",
+            Number::MinJump => "Shortest jump analyzed (circle radii)",
+            Number::MaxError => "Largest miss still analyzed (circle radii)",
             Number::SizeStep => "Largest size change per step (%)",
             Number::RotationStep => "Largest rotation change per step (°)",
             Number::TabletWidth => "Width (mm)",
