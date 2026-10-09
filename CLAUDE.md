@@ -16,6 +16,7 @@ cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablet
 
 ## Architecture
 
+- `src/lib.rs` exposes `core` as a library; `src/main.rs` is the iced binary on top of it.
 - `src/core/`: pure logic, no iced. Replay parsing, beatmap index, hit extraction, aim fit, OTD settings, tablet table, persistence. Tests live here.
 - `src/ui/`: iced pages and canvas charts. Thin: calls core, renders results.
 - Flow: .osr + .osu → `hits` → `fit` → `otd` (area suggestion) → preset export.
