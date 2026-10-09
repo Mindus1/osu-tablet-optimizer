@@ -96,9 +96,7 @@ impl OtdSettings {
             "invalid area {mapping:?}"
         );
         let current = self.profiles.get(index).context("no such OTD profile")?;
-        let (x, y) = tablet_size.map_or(current.center, |size| {
-            clamp_center(current.center, &mapping, size)
-        });
+        let (x, y) = preset_center(current, &mapping, tablet_size);
         let aspect_changed = ((mapping.area_width * current.mapping.area_height)
             / (mapping.area_height * current.mapping.area_width)
             - 1.0)
@@ -132,6 +130,59 @@ impl OtdSettings {
             .with_context(|| format!("writing {}", path.display()))?;
         Ok(path)
     }
+}
+
+// Writes `mapping` as a preset named `base`, or `base-2`, `base-3`, … when taken. It starts from
+// the settings as they are now, so later changes to filters or bindings are kept, and refuses when
+// the profile's area is no longer the one the suggestion was fitted against.
+pub fn export_preset(
+    data_dir: &Path,
+    index: usize,
+    analysed: &Mapping,
+    mapping: Mapping,
+    tablet_size: Option<(f64, f64)>,
+    base: &str,
+) -> Result<PathBuf> {
+    let settings = OtdSettings::load(data_dir)?;
+    let profile = settings
+        .profiles
+        .get(index)
+        .context("no such OTD profile")?;
+    ensure!(
+        profile.mapping == *analysed,
+        "OpenTabletDriver's area changed since the analysis; analyse again"
+    );
+    let presets = data_dir.join("Presets");
+    let mut name = base.to_string();
+    for number in 2.. {
+        if !presets.join(format!("{name}.json")).exists() {
+            break;
+        }
+        name = format!("{base}-{number}");
+    }
+    settings.write_preset(data_dir, index, mapping, tablet_size, &name)
+}
+
+// Where a preset puts the area: the profile's centre, moved just enough to keep it on the tablet
+// when the tablet's size is known.
+pub fn preset_center(
+    profile: &Profile,
+    mapping: &Mapping,
+    tablet_size: Option<(f64, f64)>,
+) -> (f64, f64) {
+    tablet_size.map_or(profile.center, |size| {
+        clamp_center(profile.center, mapping, size)
+    })
+}
+
+// The area's corners in tablet mm (y down). OTD turns the area clockwise by its rotation.
+pub fn corners(center: (f64, f64), mapping: &Mapping) -> [(f64, f64); 4] {
+    let (sin, cos) = mapping.rotation.to_radians().sin_cos();
+    let (half_w, half_h) = (mapping.area_width / 2.0, mapping.area_height / 2.0);
+    [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sy)| {
+        let (x, y) = (sx * half_w, sy * half_h);
+        (center.0 + x * cos - y * sin, center.1 + x * sin + y * cos)
+    })
 }
 
 fn profile(value: &Value) -> Result<Profile> {
@@ -419,6 +470,57 @@ mod tests {
         for name in ["", "../settings", "a/b", "C:evil", ".hidden"] {
             let result = settings.write_preset(&dir.0, 0, mapping(78.0, 43.875, 0.0), None, name);
             assert!(result.is_err(), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn export_takes_the_next_free_name() {
+        let dir = TempDir::new("otd-export-name");
+        dir.write("settings.json", SETTINGS);
+        let existing = dir.write("Presets/oto-capped.json", "{}");
+
+        let path = export_preset(
+            &dir.0,
+            0,
+            &mapping(80.0, 45.0, 0.0),
+            mapping(78.0, 43.875, 0.0),
+            None,
+            "oto-capped",
+        )
+        .unwrap();
+
+        assert_eq!(path, dir.0.join("Presets/oto-capped-2.json"));
+        assert_eq!(fs::read_to_string(existing).unwrap(), "{}");
+    }
+
+    #[test]
+    fn export_refuses_when_the_area_changed_since_the_analysis() {
+        let dir = TempDir::new("otd-export-changed");
+        dir.write("settings.json", SETTINGS);
+
+        let result = export_preset(
+            &dir.0,
+            0,
+            &mapping(70.0, 39.375, 0.0),
+            mapping(68.0, 38.25, 0.0),
+            None,
+            "oto",
+        );
+
+        assert!(result.is_err());
+        assert!(!dir.0.join("Presets").exists());
+    }
+
+    #[test]
+    fn corners_turn_clockwise_with_the_rotation() {
+        let corners = corners((50.0, 50.0), &mapping(80.0, 40.0, 90.0));
+
+        let expected = [(70.0, 10.0), (70.0, 90.0), (30.0, 90.0), (30.0, 10.0)];
+        for (corner, expected) in corners.iter().zip(expected) {
+            assert!(
+                (corner.0 - expected.0).abs() < 1e-9 && (corner.1 - expected.1).abs() < 1e-9,
+                "{corners:?}"
+            );
         }
     }
 

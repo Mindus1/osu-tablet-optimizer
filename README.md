@@ -4,7 +4,7 @@ Analyzes your osu! replays (stable and lazer) and suggests a better [OpenTabletD
 
 Suggestions are exported as OTD presets, so your current settings stay untouched.
 
-Status: in development. Setup, the replay list and the analysis work; area suggestions are next.
+Status: in development. Setup, the replay list, the analysis and area suggestions work; history is next.
 
 ## Usage
 
@@ -25,6 +25,11 @@ Status: in development. Setup, the replay list and the analysis work; area sugge
    - **Error scatter:** each dot is one jump's error, along the jump (right = too far) and across it. The circle is the hit radius.
    - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot. Stopping at the circle's edge is left out, as in the Overshoot number, and directions with fewer than 10 jumps are left open.
    - When you change the selection or setup afterwards, the page says so; press *Analyse selected again* to update.
+4. **Area** draws the suggested tablet area over your current one and lists the numbers. It needs an analysis made with OpenTabletDriver's settings found, and a profile in absolute mode.
+   - **Capped step:** changes the size by at most 3% and the rotation by at most 2°. You can change these limits in Setup. Take this step, play a few sessions, then analyse again.
+   - **Full fit:** the whole correction the analysis measured.
+   - Size, aspect ratio and rotation stay as they are when the analysis shows no clear effect.
+   - **Export:** saves the area as an OpenTabletDriver preset named like `oto-2026-10-09-capped` and copies your other settings as they are. The area keeps its centre, moved only as far as needed to stay on the tablet. In OpenTabletDriver, apply the preset under *File → Presets*; if OpenTabletDriver is already running, use *Refresh presets* first.
 
 The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
 

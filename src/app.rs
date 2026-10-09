@@ -9,7 +9,7 @@ use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::otd::OtdSettings;
 use osu_tablet_optimizer::core::storage;
 
-use crate::ui::{analysis, replays, setup};
+use crate::ui::{analysis, area, replays, setup};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Page {
@@ -50,6 +50,7 @@ pub enum Message {
     Replays(replays::Message),
     Setup(setup::Message),
     Analysis(analysis::Message),
+    Area(area::Message),
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,7 @@ pub struct App {
     pub replays: replays::State,
     pub setup: setup::State,
     pub analysis: analysis::State,
+    pub area: area::State,
     pub notice: Option<String>,
 }
 
@@ -102,6 +104,7 @@ impl App {
             rescan_pending: false,
             replays: replays::State::default(),
             analysis: analysis::State::default(),
+            area: area::State::default(),
             notice,
         };
         app.reload_otd();
@@ -148,6 +151,7 @@ impl App {
             Message::Replays(message) => return replays::update(self, message),
             Message::Setup(message) => return setup::update(self, message),
             Message::Analysis(message) => return analysis::update(self, message),
+            Message::Area(message) => return area::update(self, message),
         }
         Task::none()
     }
@@ -170,6 +174,7 @@ impl App {
             Page::Replays => replays::view(self),
             Page::Setup => setup::view(self),
             Page::Analysis => analysis::view(self),
+            Page::Area => area::view(self),
             other => text(other.label()).size(24).into(),
         };
         let mut content = column![page].spacing(8);
