@@ -90,6 +90,7 @@ pub fn read_header(r: &mut impl Read) -> Result<Header> {
     let legacy_mods = read_i32(r)? as u32;
     let _life_bar = read_string(r)?;
     let ticks = read_i64(r)?;
+    ensure!(ticks >= 0, "invalid replay timestamp {ticks}");
 
     Ok(Header {
         mode,
@@ -125,7 +126,7 @@ pub fn read_replay(r: &mut impl Read) -> Result<Replay> {
 }
 
 fn parse_frames(text: &str) -> Result<Vec<Frame>> {
-    let mut time = 0;
+    let mut time: i64 = 0;
     let mut frames = Vec::new();
     for raw in text.split(',') {
         let parts: Vec<&str> = raw.split('|').collect();
@@ -134,7 +135,10 @@ fn parse_frames(text: &str) -> Result<Vec<Frame>> {
         }
         let malformed = || format!("malformed replay frame {raw:?}");
         let delta: f64 = parts[0].parse().with_context(malformed)?;
-        time += delta.round() as i64;
+        ensure!(delta.is_finite(), malformed());
+        time = time
+            .checked_add(delta.round() as i64)
+            .with_context(malformed)?;
         frames.push(Frame {
             time,
             x: parts[1].parse().with_context(malformed)?,
@@ -374,6 +378,16 @@ mod tests {
     }
 
     #[test]
+    fn negative_timestamp_is_an_error() {
+        let osr = Osr {
+            ticks: i64::MIN,
+            ..Osr::default()
+        };
+
+        assert!(read_header(&mut osr.bytes().as_slice()).is_err());
+    }
+
+    #[test]
     fn absent_player_name_reads_as_empty() {
         let osr = Osr {
             player: "",
@@ -504,6 +518,28 @@ mod tests {
         let error = parse(osr).unwrap_err();
 
         assert!(format!("{error:#}").contains("malformed replay frame"));
+    }
+
+    #[test]
+    fn non_finite_frame_delta_is_an_error() {
+        for frames in ["inf|1|2|0,", "NaN|1|2|0,"] {
+            let osr = Osr {
+                frames,
+                ..Osr::default()
+            };
+
+            assert!(parse(osr).is_err(), "{frames}");
+        }
+    }
+
+    #[test]
+    fn overflowing_frame_time_is_an_error() {
+        let osr = Osr {
+            frames: "9e18|1|2|0,9e18|1|2|0,",
+            ..Osr::default()
+        };
+
+        assert!(parse(osr).is_err());
     }
 
     #[test]
