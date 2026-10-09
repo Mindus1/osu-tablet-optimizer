@@ -40,10 +40,14 @@ pub fn analyze(
     mapping: Mapping,
     settings: &Settings,
 ) -> Report {
+    // Sorted so the bootstrap sees the replays in the same order, and the intervals come out the
+    // same, every time the same selection is analyzed.
+    let mut paths = paths.to_vec();
+    paths.sort();
     let mut replays = Vec::new();
     let mut measured = Vec::new();
     let mut skipped = Vec::new();
-    for path in paths {
+    for path in &paths {
         match hits::replay_samples(path, beatmaps) {
             Ok((header, samples)) => {
                 if let Some(metrics) = fit::measure(&samples, settings) {
@@ -138,6 +142,14 @@ mod tests {
     use super::*;
     use crate::core::replay::tests::Osr;
 
+    const MAPPING: Mapping = Mapping {
+        area_width: 80.0,
+        area_height: 45.0,
+        rotation: 0.0,
+        display_width: 1920.0,
+        display_height: 1080.0,
+    };
+
     fn sample(intended: (f64, f64), actual: (f64, f64)) -> Sample {
         Sample {
             intended,
@@ -220,18 +232,11 @@ mod tests {
     fn unreadable_replays_are_listed_with_their_reason() {
         let path = std::env::temp_dir().join(format!("oto-aim-{}.osr", std::process::id()));
         std::fs::write(&path, Osr::default().bytes()).unwrap();
-        let mapping = Mapping {
-            area_width: 80.0,
-            area_height: 45.0,
-            rotation: 0.0,
-            display_width: 1920.0,
-            display_height: 1080.0,
-        };
 
         let report = analyze(
             std::slice::from_ref(&path),
             &HashMap::new(),
-            mapping,
+            MAPPING,
             &Settings::default(),
         );
         std::fs::remove_file(&path).unwrap();
@@ -243,5 +248,15 @@ mod tests {
         );
         assert!(report.measured.is_empty());
         assert_eq!(report.suggestion, None);
+    }
+
+    #[test]
+    fn replays_are_read_in_path_order() {
+        let paths = [PathBuf::from("b.osr"), PathBuf::from("a.osr")];
+
+        let report = analyze(&paths, &HashMap::new(), MAPPING, &Settings::default());
+
+        let order: Vec<&PathBuf> = report.skipped.iter().map(|(path, _)| path).collect();
+        assert_eq!(order, [&paths[1], &paths[0]]);
     }
 }
