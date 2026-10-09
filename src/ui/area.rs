@@ -179,6 +179,11 @@ fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {
     let analysed = analysis.otd_mapping.ok_or(
         "The last analysis ran without OpenTabletDriver's settings. Choose its folder in Setup, then analyse again.",
     )?;
+    if analysis.settings != app.config.fit {
+        return Err(
+            "The analysis numbers in Setup changed since the last analysis; analyse again.",
+        );
+    }
     let profile =
         setup::profile(app).ok_or("OpenTabletDriver's settings aren't loaded; check Setup.")?;
     if !profile.absolute {

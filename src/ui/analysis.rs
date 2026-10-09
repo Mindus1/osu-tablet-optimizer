@@ -34,7 +34,7 @@ pub struct Analysis {
     selection: HashSet<PathBuf>,
     // OpenTabletDriver's mapping the fit ran against; None when the neutral one stood in.
     pub otd_mapping: Option<Mapping>,
-    settings: Settings,
+    pub settings: Settings,
     pub report: Report,
 }
 
