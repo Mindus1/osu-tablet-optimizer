@@ -87,6 +87,14 @@ impl OtdSettings {
             !name.is_empty() && !name.contains(['/', '\\', ':']) && !name.starts_with('.'),
             "invalid preset name {name:?}"
         );
+        // serde_json writes NaN and infinity as null, which OTD would silently refuse to load.
+        ensure!(
+            [mapping.area_width, mapping.area_height]
+                .iter()
+                .all(|size| size.is_finite() && *size > 0.0)
+                && mapping.rotation.is_finite(),
+            "invalid area {mapping:?}"
+        );
         let current = self.profiles.get(index).context("no such OTD profile")?;
         let (x, y) = tablet_size.map_or(current.center, |size| {
             clamp_center(current.center, &mapping, size)
@@ -386,6 +394,22 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(fs::read_to_string(existing).unwrap(), "{}");
+    }
+
+    #[test]
+    fn degenerate_area_is_rejected_without_writing() {
+        let (dir, settings) = installed("otd-degenerate", SETTINGS);
+
+        for broken in [
+            mapping(f64::NAN, 45.0, 0.0),
+            mapping(80.0, f64::INFINITY, 0.0),
+            mapping(0.0, 45.0, 0.0),
+            mapping(80.0, 45.0, f64::NAN),
+        ] {
+            let result = settings.write_preset(&dir.0, 0, broken, None, "broken");
+            assert!(result.is_err(), "{broken:?}");
+        }
+        assert!(!dir.0.join("Presets/broken.json").exists());
     }
 
     #[test]
