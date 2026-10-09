@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, Read};
 use std::num::NonZero;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::SystemTime;
 
@@ -11,9 +12,13 @@ use rosu_map::section::metadata::Metadata;
 use serde::{Deserialize, Serialize};
 
 use crate::core::replay::{self, Header};
+use crate::core::storage;
 
 const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
 const BEATMAP_SIGNATURE: &[u8] = b"osu file format v";
+// Bump when cached content changes meaning (e.g. how titles are built), so old caches rebuild.
+const CACHE_VERSION: u32 = 1;
+const PROGRESS_STEP: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Content {
@@ -35,38 +40,56 @@ pub struct Beatmap<'a> {
     pub title: &'a str,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default)]
 pub struct Library {
     files: HashMap<PathBuf, Entry>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Cache<Files> {
+    #[serde(default)]
+    version: u32,
+    files: Files,
+}
+
 impl Library {
+    // A missing or outdated cache loads empty, so the next scan rebuilds it.
     pub fn load(path: &Path) -> Result<Library> {
         if !path.exists() {
             return Ok(Library::default());
         }
         let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
-        serde_json::from_reader(BufReader::new(file))
-            .with_context(|| format!("reading {}", path.display()))
+        let cache: Cache<HashMap<PathBuf, Entry>> =
+            serde_json::from_reader(BufReader::new(file))
+                .with_context(|| format!("reading {}", path.display()))?;
+        if cache.version != CACHE_VERSION {
+            return Ok(Library::default());
+        }
+        Ok(Library { files: cache.files })
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-        }
-        let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer(&mut writer, self)?;
-        writer.flush()?;
-        Ok(())
+        let cache = Cache {
+            version: CACHE_VERSION,
+            files: &self.files,
+        };
+        storage::write_atomic(path, &serde_json::to_vec(&cache)?)
     }
 
     // Returns the files that could not be read or cached; the next scan retries them.
-    pub fn scan(&mut self, roots: &[PathBuf]) -> Vec<PathBuf> {
+    // `progress(done, total)` is called from the reading threads as changed files are read.
+    pub fn scan(
+        &mut self,
+        roots: &[PathBuf],
+        progress: &(dyn Fn(usize, usize) + Sync),
+    ) -> Vec<PathBuf> {
         let mut candidates = Vec::new();
         for root in roots {
             collect_candidates(root, &mut candidates);
         }
+        // Overlapping or repeated roots would otherwise read the same files twice.
+        candidates.sort_by(|a, b| a.0.cmp(&b.0));
+        candidates.dedup_by(|a, b| a.0 == b.0);
         let (candidates, uncacheable): (Vec<_>, Vec<_>) = candidates
             .into_iter()
             .partition(|(path, modified, _)| is_cacheable(path, *modified));
@@ -83,7 +106,16 @@ impl Library {
             }
         }
 
-        let contents = par_map(&changed, |(path, _, _)| read_content(path));
+        let total = changed.len();
+        let done = AtomicUsize::new(0);
+        let contents = par_map(&changed, |(path, _, _)| {
+            let content = read_content(path);
+            let count = done.fetch_add(1, Ordering::Relaxed) + 1;
+            if count.is_multiple_of(PROGRESS_STEP) || count == total {
+                progress(count, total);
+            }
+            content
+        });
         for ((path, modified, len), content) in changed.into_iter().zip(contents) {
             match content {
                 Ok(content) => {
@@ -175,6 +207,18 @@ pub fn lazer_root(default: &Path) -> PathBuf {
         .ok()
         .and_then(|text| ini_value(&text, "FullPath"))
         .map_or_else(|| default.to_path_buf(), PathBuf::from)
+}
+
+// A folder the user picked: stable (has osu!.exe) and lazer (has client.realm or storage.ini)
+// folders expand like detected ones; anything else is scanned as it is.
+pub fn roots_for(picked: &Path) -> Vec<PathBuf> {
+    if picked.join("osu!.exe").is_file() {
+        stable_roots(picked)
+    } else if picked.join("client.realm").is_file() || picked.join("storage.ini").is_file() {
+        vec![lazer_root(picked)]
+    } else {
+        vec![picked.to_path_buf()]
+    }
 }
 
 fn songs_dir(stable: &Path) -> PathBuf {
@@ -326,7 +370,7 @@ pub(crate) mod tests {
             path
         }
 
-        fn roots(&self) -> &[PathBuf] {
+        pub(crate) fn roots(&self) -> &[PathBuf] {
             std::slice::from_ref(&self.0)
         }
     }
@@ -351,7 +395,7 @@ pub(crate) mod tests {
 
     fn scanned(dir: &TempDir) -> Library {
         let mut library = Library::default();
-        assert!(library.scan(dir.roots()).is_empty());
+        assert!(library.scan(dir.roots(), &|_, _| {}).is_empty());
         library
     }
 
@@ -415,6 +459,29 @@ pub(crate) mod tests {
         );
 
         assert_eq!(stable_roots(&dir.0), [dir.0.clone(), elsewhere]);
+    }
+
+    #[test]
+    fn picked_folders_expand_like_detected_installs() {
+        let dir = TempDir::new("picked");
+        let elsewhere = std::env::temp_dir().join("oto-picked-songs");
+        dir.write("stable/osu!.exe", "");
+        dir.write(
+            "stable/osu!.me.cfg",
+            format!("BeatmapDirectory = {}\n", elsewhere.display()),
+        );
+        dir.write("lazer/storage.ini", "FullPath = D:\\osu-data\n");
+        dir.write("other/readme.txt", "");
+
+        assert_eq!(
+            roots_for(&dir.0.join("stable")),
+            [dir.0.join("stable"), elsewhere]
+        );
+        assert_eq!(
+            roots_for(&dir.0.join("lazer")),
+            [PathBuf::from("D:\\osu-data")]
+        );
+        assert_eq!(roots_for(&dir.0.join("other")), [dir.0.join("other")]);
     }
 
     #[test]
@@ -538,7 +605,7 @@ pub(crate) mod tests {
         fs::write(&path, BEATMAP.replace("Hard", "Easy")).unwrap();
         set_modified(&path, modified);
 
-        library.scan(dir.roots());
+        library.scan(dir.roots(), &|_, _| {});
 
         assert!(
             library
@@ -556,7 +623,7 @@ pub(crate) mod tests {
         fs::write(&path, &edited).unwrap();
         set_modified(&path, SystemTime::now() + Duration::from_secs(5));
 
-        library.scan(dir.roots());
+        library.scan(dir.roots(), &|_, _| {});
 
         let beatmaps = library.beatmaps_by_md5();
         assert!(beatmaps.contains_key(md5_hex(edited.as_bytes()).as_str()));
@@ -570,7 +637,7 @@ pub(crate) mod tests {
         let mut library = scanned(&dir);
         fs::remove_file(&path).unwrap();
 
-        library.scan(dir.roots());
+        library.scan(dir.roots(), &|_, _| {});
 
         assert!(library.files.is_empty());
     }
@@ -583,7 +650,11 @@ pub(crate) mod tests {
         link_dir(&songs.0, &stable.0.join("Songs"));
 
         let mut library = Library::default();
-        assert!(library.scan(&stable_roots(&stable.0)).is_empty());
+        assert!(
+            library
+                .scan(&stable_roots(&stable.0), &|_, _| {})
+                .is_empty()
+        );
 
         assert!(
             library
@@ -599,7 +670,7 @@ pub(crate) mod tests {
         set_modified(&path, SystemTime::UNIX_EPOCH - Duration::from_secs(60));
 
         let mut library = Library::default();
-        let unreadable = library.scan(dir.roots());
+        let unreadable = library.scan(dir.roots(), &|_, _| {});
 
         assert_eq!(unreadable, [path]);
         library.save(&dir.0.join("library.json")).unwrap();
@@ -614,7 +685,7 @@ pub(crate) mod tests {
         fs::write(&path, BEATMAP).unwrap();
 
         let mut library = Library::default();
-        let unreadable = library.scan(dir.roots());
+        let unreadable = library.scan(dir.roots(), &|_, _| {});
 
         assert_eq!(unreadable, [path]);
         library.save(&dir.0.join("library.json")).unwrap();
@@ -632,6 +703,46 @@ pub(crate) mod tests {
         let loaded = Library::load(&cache).unwrap();
 
         assert_eq!(loaded.files, library.files);
+    }
+
+    #[test]
+    fn outdated_cache_loads_empty() {
+        let dir = TempDir::new("old-cache");
+        dir.write("Songs/set/map.osu", BEATMAP);
+        let cache = dir.0.join("library.json");
+        scanned(&dir).save(&cache).unwrap();
+        let text = fs::read_to_string(&cache).unwrap();
+        fs::write(&cache, text.replace("\"version\":1", "\"version\":0")).unwrap();
+
+        assert!(Library::load(&cache).unwrap().files.is_empty());
+    }
+
+    #[test]
+    fn scan_reports_progress_up_to_the_total() {
+        let dir = TempDir::new("progress");
+        for i in 0..3 {
+            dir.write(&format!("Data/r/{i}.osr"), replay_bytes("player"));
+        }
+        let last = std::sync::Mutex::new((0, 0));
+
+        Library::default().scan(dir.roots(), &|done, total| {
+            *last.lock().unwrap() = (done, total)
+        });
+
+        assert_eq!(*last.lock().unwrap(), (3, 3));
+    }
+
+    #[test]
+    fn overlapping_roots_are_read_once() {
+        let dir = TempDir::new("overlap");
+        dir.write("Songs/set/map.osu", BEATMAP);
+        dir.write("Data/r/x.osr", replay_bytes("player"));
+        let total = std::sync::Mutex::new(0);
+        let roots = [dir.0.clone(), dir.0.join("Songs"), dir.0.clone()];
+
+        Library::default().scan(&roots, &|_, all| *total.lock().unwrap() = all);
+
+        assert_eq!(*total.lock().unwrap(), 2);
     }
 
     #[test]
@@ -673,10 +784,10 @@ pub(crate) mod tests {
         let roots = default_roots();
         let mut library = Library::default();
         let started = std::time::Instant::now();
-        let unreadable = library.scan(&roots);
+        let unreadable = library.scan(&roots, &|_, _| {});
         let first = started.elapsed();
         let started = std::time::Instant::now();
-        library.scan(&roots);
+        library.scan(&roots, &|_, _| {});
         eprintln!(
             "{roots:?}: {} files, first scan {first:?}, rescan {:?}, {} unreadable, player {:?}",
             library.files.len(),

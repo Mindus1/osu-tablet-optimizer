@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::core::hits::Sample;
 
 // ponytail: fixed statistics knobs; expose them in Setup if users ask.
@@ -10,7 +12,8 @@ const TAIL: f64 = 0.05;
 
 type Mat2 = [[f64; 2]; 2];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub min_jump_radii: f64,
     pub max_error_radii: f64,
@@ -665,7 +668,7 @@ mod tests {
         use crate::core::{hits, library};
 
         let mut library = library::Library::default();
-        library.scan(&library::default_roots());
+        library.scan(&library::default_roots(), &|_, _| {});
         let beatmaps = library.beatmaps_by_md5();
         let mut replays: Vec<_> = library
             .replays()

@@ -19,7 +19,8 @@ cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablet
 
 - `src/lib.rs` exposes `core` as a library; `src/main.rs` is the iced binary on top of it.
 - `src/core/`: pure logic, no iced. Replay parsing, beatmap index, hit extraction, aim fit, OTD settings, tablet table, persistence. Tests live here.
-- `src/ui/`: iced pages and canvas charts. Thin: calls core, renders results.
+- `src/app.rs`: app state, page routing, background work (scan) via `Task::run` + `iced::stream::channel` from a worker thread.
+- `src/ui/<page>.rs`: `view(&App)` and `update(&mut App, Message)` per page. Thin: calls core, renders results.
 - Flow: .osr + .osu → `hits` → `fit` → `otd` (area suggestion) → preset export.
 - Units: osu!pixels (512×384) for replays and beatmaps, mm for the tablet area. Convert only in `fit`/`otd`.
 

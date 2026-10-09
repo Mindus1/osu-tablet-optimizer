@@ -149,7 +149,7 @@ fn parse_frames(text: &str) -> Result<Vec<Frame>> {
     Ok(frames)
 }
 
-fn legacy_mods(mut bits: u32) -> Vec<Mod> {
+pub fn legacy_mods(mut bits: u32) -> Vec<Mod> {
     if bits & NIGHTCORE != 0 {
         bits &= !DOUBLE_TIME;
     }
@@ -262,6 +262,7 @@ pub(crate) mod tests {
     pub(crate) struct Osr<'a> {
         pub(crate) version: i32,
         pub(crate) player: &'a str,
+        pub(crate) beatmap_md5: &'a str,
         pub(crate) legacy_mods: u32,
         pub(crate) ticks: i64,
         pub(crate) frames: &'a str,
@@ -273,6 +274,7 @@ pub(crate) mod tests {
             Osr {
                 version: STABLE_VERSION,
                 player: "player",
+                beatmap_md5: "0123456789abcdef0123456789abcdef",
                 legacy_mods: 0,
                 ticks: TICKS_AT_UNIX_EPOCH,
                 frames: "0|256|192|0,",
@@ -285,7 +287,7 @@ pub(crate) mod tests {
         pub(crate) fn bytes(&self) -> Vec<u8> {
             let mut b = vec![0];
             b.extend(self.version.to_le_bytes());
-            push_string(&mut b, "0123456789abcdef0123456789abcdef");
+            push_string(&mut b, self.beatmap_md5);
             push_string(&mut b, self.player);
             push_string(&mut b, "replay-md5");
             for count in [300u16, 20, 3, 7, 5, 1] {
