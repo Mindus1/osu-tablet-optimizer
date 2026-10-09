@@ -1,9 +1,15 @@
-use anyhow::{Result, ensure};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
+
+use anyhow::{Context, Result, ensure};
 use rosu_map::Beatmap;
 use rosu_map::section::hit_objects::HitObjectKind;
 use serde_json::Value;
 
-use crate::core::replay::{Frame, Mod, Replay};
+use crate::core::library;
+use crate::core::replay::{self, Frame, Mod, Replay};
 
 const PLAYFIELD_WIDTH: f64 = 512.0;
 const PLAYFIELD_HEIGHT: f64 = 384.0;
@@ -50,6 +56,22 @@ struct Difficulty {
     overall_difficulty: f64,
     flip_x: bool,
     flip_y: bool,
+}
+
+pub fn replay_samples(
+    replay_path: &Path,
+    beatmaps: &HashMap<&str, library::Beatmap<'_>>,
+) -> Result<Vec<Sample>> {
+    let file =
+        File::open(replay_path).with_context(|| format!("opening {}", replay_path.display()))?;
+    let replay = replay::read_replay(&mut BufReader::new(file))?;
+    let beatmap_path = beatmaps
+        .get(replay.header.beatmap_md5.as_str())
+        .map(|beatmap| beatmap.path)
+        .context("beatmap not found in the osu! library")?;
+    let beatmap = Beatmap::from_path(beatmap_path)
+        .with_context(|| format!("reading {}", beatmap_path.display()))?;
+    samples(&replay, &beatmap)
 }
 
 pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
@@ -521,5 +543,65 @@ mod tests {
         let error = samples(&replay, &map).unwrap_err().to_string();
 
         assert_eq!(error, "unsupported mods: AP, bit15");
+    }
+
+    #[test]
+    fn replay_without_installed_beatmap_is_reported() {
+        let path = std::env::temp_dir().join(format!("oto-hits-{}.osr", std::process::id()));
+        std::fs::write(&path, crate::core::replay::tests::Osr::default().bytes()).unwrap();
+
+        let error = replay_samples(&path, &HashMap::new()).unwrap_err();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(error.to_string(), "beatmap not found in the osu! library");
+    }
+
+    #[test]
+    #[ignore = "scans the osu! installs on this machine"]
+    fn real_replays_land_near_their_objects() {
+        let mut library = library::Library::default();
+        library.scan(&library::default_roots());
+        let beatmaps = library.beatmaps_by_md5();
+        let mut replays: Vec<_> = library
+            .replays()
+            .filter(|(_, header)| header.mode == 0)
+            .collect();
+        replays.sort_by_key(|(_, header)| std::cmp::Reverse(header.played_at_ms));
+
+        let mut errors: HashMap<bool, Vec<f64>> = HashMap::new();
+        let mut skipped: HashMap<String, usize> = HashMap::new();
+        let mut taken: HashMap<bool, usize> = HashMap::new();
+        for (path, header) in replays {
+            let hard_rock = header.legacy_mods & (1 << 4) != 0;
+            let count = taken.entry(hard_rock).or_default();
+            if *count == 150 {
+                continue;
+            }
+            *count += 1;
+            match replay_samples(path, &beatmaps) {
+                Ok(samples) => {
+                    errors
+                        .entry(hard_rock)
+                        .or_default()
+                        .extend(samples.iter().map(|s| {
+                            (s.actual.0 - s.intended.0).hypot(s.actual.1 - s.intended.1) / s.radius
+                        }));
+                }
+                Err(error) => *skipped.entry(error.to_string()).or_default() += 1,
+            }
+        }
+        eprintln!("skipped: {skipped:?}");
+        for (hard_rock, mut errors) in errors {
+            errors.sort_by(f64::total_cmp);
+            let median = errors[errors.len() / 2];
+            eprintln!(
+                "HR={hard_rock}: {} samples, median error {median:.2} radii",
+                errors.len()
+            );
+            assert!(
+                median < 1.0,
+                "HR={hard_rock}: median error {median:.2} radii"
+            );
+        }
     }
 }
