@@ -160,6 +160,22 @@ impl History {
         }
     }
 
+    // How many of these replays were played with a logged area other than the current (last)
+    // one; an earlier stretch with the same area counts as current. Unknown ones don't count:
+    // they were probably played with the current area.
+    pub fn from_other_areas(&self, replays: &[(PathBuf, Entry)]) -> usize {
+        let Some(current) = self.snapshots.last() else {
+            return 0;
+        };
+        replays
+            .iter()
+            .filter(|(path, entry)| {
+                self.snapshot_of(path, entry.played_at_ms)
+                    .is_some_and(|area| self.snapshots[area].mapping != current.mapping)
+            })
+            .count()
+    }
+
     pub fn record(&mut self, measured: &[(PathBuf, Entry)]) {
         self.replays.extend(measured.iter().cloned());
     }
@@ -324,6 +340,30 @@ mod tests {
         history.assign([path.clone()], Some(7));
 
         assert_eq!(history.snapshot_of(&path, 150), Some(0));
+    }
+
+    #[test]
+    fn replays_from_older_areas_are_counted() {
+        let mut history = two_areas();
+        history.assign([PathBuf::from("assigned.osr")], Some(0));
+        let replays = [
+            (PathBuf::from("unknown.osr"), entry(50, 0.0, 30)),
+            (PathBuf::from("old.osr"), entry(150, 0.0, 30)),
+            (PathBuf::from("assigned.osr"), entry(250, 0.0, 30)),
+            (PathBuf::from("current.osr"), entry(250, 0.0, 30)),
+        ];
+
+        assert_eq!(history.from_other_areas(&replays), 2);
+    }
+
+    #[test]
+    fn going_back_to_an_earlier_area_counts_its_replays_as_current() {
+        let mut history = two_areas();
+        history.observe(mapping(80.0), 300);
+
+        let replays = [(PathBuf::from("first.osr"), entry(150, 0.0, 30))];
+
+        assert_eq!(history.from_other_areas(&replays), 0);
     }
 
     #[test]

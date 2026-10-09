@@ -134,6 +134,15 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             kept.join(", ")
         )));
     }
+    let elsewhere = app.analysis.last.as_ref().map_or(0, |analysis| {
+        app.history.from_other_areas(&analysis.report.measured)
+    });
+    if elsewhere > 0 {
+        notes = notes.push(text(format!(
+            "{elsewhere} of the analyzed replays were played with an older area. The suggestion \
+             corrects your current area, so filter the Replays page to it and analyze again."
+        )));
+    }
     let settings = app.config.fit;
     notes = notes.push(text(format!(
         "The capped step changes the size by at most {}% and the rotation by at most {}°. \

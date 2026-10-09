@@ -199,9 +199,10 @@ fn profile(value: &Value) -> Result<Profile> {
     let display = &area["Display"];
     Ok(Profile {
         tablet: value["Tablet"].as_str().unwrap_or_default().to_string(),
+        // Linux Artist Mode maps the area absolutely too.
         absolute: value["OutputMode"]["Path"]
             .as_str()
-            .is_some_and(|path| path.contains("Absolute")),
+            .is_some_and(|path| path.contains("Absolute") || path.contains("ArtistMode")),
         mapping: Mapping {
             area_width: number(&tablet["Width"], "tablet area width")?,
             area_height: number(&tablet["Height"], "tablet area height")?,
@@ -310,6 +311,17 @@ mod tests {
             }
         );
         assert!(!settings.profiles[1].absolute);
+    }
+
+    #[test]
+    fn linux_artist_mode_is_absolute() {
+        let settings = SETTINGS.replace(
+            "OpenTabletDriver.Desktop.Output.RelativeMode",
+            "OpenTabletDriver.Desktop.Output.LinuxArtistMode",
+        );
+        let (_dir, settings) = installed("otd-artist", &settings);
+
+        assert!(settings.profiles[1].absolute);
     }
 
     #[test]
