@@ -54,7 +54,7 @@ Single crate. `core/` is pure logic with no iced dependency and is where all tes
 src/main.rs            iced bootstrap
 src/app.rs             State, Message, update, sidebar routing
 src/core/replay.rs     .osr: header-only read (fast listing) + LZMA frames + lazer trailer mods
-src/core/beatmap.rs    scan stable Songs + lazer files store → index (md5, path, title); load via rosu-map
+src/core/library.rs    find stable/lazer installs, index beatmaps (md5, path, title) + replay headers, JSON cache
 src/core/hits.rs       mods, press↔object matching, samples (u, v, r)
 src/core/fit.rs        regression, OTD-parameter decomposition, bootstrap, caps
 src/core/otd.rs        locate OTD data dir, profiles, read area, write preset (keep centre + clamp)
@@ -74,8 +74,8 @@ examples/update_tablets.rs   regenerates src/core/tablets.tsv from an OTD checko
 - OTD: `<platform data dir>/OpenTabletDriver` (`%LOCALAPPDATA%`, `$XDG_CONFIG_HOME` or `~/.config`, `~/Library/Application Support`). For portable installs, the user picks the OTD folder once, and the app accepts either the exe folder (uses `userdata/`) or the data folder itself.
 - stable: `%LOCALAPPDATA%/osu!` → `Songs/`, `Data/r/`, `Replays/` (on Linux/macOS through Wine, picked by hand).
 - lazer: `%APPDATA%/osu`, `~/.local/share/osu` or `~/Library/Application Support/osu`, honouring the `storage.ini` custom-location override → `files/`, `exports/`.
-- One scan pass over the lazer store sorts files by signature, reading only the first 64 bytes of each: `.osu` starts with `osu file format v`, `.osr` starts with mode byte 0 + plausible version + `0x0b 0x20` + 32 hex chars. Stores can be huge (test machine: 121k files, 58 GB), so the scan is **incremental by directory mtime** and runs in the background with progress.
-- Persistence lives in `dirs::data_dir()/osu-tablet-optimizer/`: `config.json`, `history.json`, `index.tsv` (`kind \t md5 \t path \t title \t player`).
+- One scan walks every root and keeps `.osu`, `.osr` and extension-less files (lazer's store). It reuses cache entries whose modified time and size are unchanged, and classifies the rest by content: `osu file format v`, or a `.osr` header signature (mode byte 0–3, plausible version, `0x0b 0x20` + 32-char MD5). Changed files are read in parallel. On the test machine: 171k candidates, 25 s first scan, 1.5 s rescan.
+- Persistence lives in `dirs::data_dir()/osu-tablet-optimizer/`: `config.json`, `history.json`, `library.json` (file cache: path → modified, size, beatmap md5 + title or replay header).
 
 **OTD preset export:** parse the settings as `serde_json::Value`, change only the selected profile's `AbsoluteModeSettings.Tablet.{Width,Height,X,Y,Rotation}` (plus `LockAspectRatio=false` if the aspect changes), and write `Presets/oto-YYYY-MM-DD-{capped|full}.json`. Unknown fields are preserved.
 
@@ -93,7 +93,7 @@ examples/update_tablets.rs   regenerates src/core/tablets.tsv from an OTD checko
 
 1. `feature/app-shell`: Cargo project, sidebar + empty pages, CI + release workflows, README build section
 2. `feature/replay-parser`: `replay.rs` + tests
-3. `feature/beatmap-index`: `beatmap.rs` (stable + lazer, incremental, replay discovery, player auto-detect)
+3. `feature/beatmap-index`: `library.rs` (stable + lazer, incremental, replay discovery, player auto-detect)
 4. `feature/hit-extraction`: `hits.rs` (mods, matching, filters)
 5. `feature/aim-fit`: `fit.rs` (synthetic recovery tests)
 6. `feature/otd-settings`: `otd.rs` + `tablets.rs` + `update_tablets` example (discovery, profiles, preset write, rotation convention test)

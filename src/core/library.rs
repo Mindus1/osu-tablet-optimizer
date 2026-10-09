@@ -590,4 +590,35 @@ mod tests {
 
         assert_eq!(scanned(&dir).most_frequent_player(), Some("bob"));
     }
+
+    #[test]
+    #[ignore = "scans the osu! installs on this machine"]
+    fn real_installs_resolve_fixture_beatmaps() {
+        let roots = default_roots();
+        let mut library = Library::default();
+        let started = std::time::Instant::now();
+        let unreadable = library.scan(&roots);
+        let first = started.elapsed();
+        let started = std::time::Instant::now();
+        library.scan(&roots);
+        eprintln!(
+            "{roots:?}: {} files, first scan {first:?}, rescan {:?}, {} unreadable, player {:?}",
+            library.files.len(),
+            started.elapsed(),
+            unreadable.len(),
+            library.most_frequent_player()
+        );
+
+        let beatmaps = library.beatmaps_by_md5();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        for path in fs::read_dir(fixtures).unwrap().map(|e| e.unwrap().path()) {
+            if path.extension().is_some_and(|ext| ext == "osr") {
+                let header =
+                    replay::read_header(&mut BufReader::new(File::open(&path).unwrap())).unwrap();
+                let beatmap = beatmaps.get(header.beatmap_md5.as_str());
+                assert!(beatmap.is_some(), "{}: beatmap not found", path.display());
+                eprintln!("{} -> {}", path.display(), beatmap.unwrap().title);
+            }
+        }
+    }
 }
