@@ -1,9 +1,10 @@
 use std::io::Read;
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 
 const TICKS_AT_UNIX_EPOCH: i64 = 621_355_968_000_000_000;
 const TICKS_PER_MS: i64 = 10_000;
+const SEED_FRAME_DELTA: &str = "-12345";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
@@ -17,6 +18,20 @@ pub struct Header {
     pub count_miss: u16,
     pub legacy_mods: u32,
     pub played_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Frame {
+    pub time: i64,
+    pub x: f32,
+    pub y: f32,
+    pub keys: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Replay {
+    pub header: Header,
+    pub frames: Vec<Frame>,
 }
 
 pub fn read_header(r: &mut impl Read) -> Result<Header> {
@@ -52,11 +67,58 @@ pub fn read_header(r: &mut impl Read) -> Result<Header> {
     })
 }
 
+pub fn read_replay(r: &mut impl Read) -> Result<Replay> {
+    let header = read_header(r).context("reading replay header")?;
+    let data = read_byte_array(r).context("reading replay data")?;
+    let frames = parse_frames(&decompress(&data).context("decompressing replay data")?)?;
+
+    Ok(Replay { header, frames })
+}
+
+fn parse_frames(text: &str) -> Result<Vec<Frame>> {
+    let mut time = 0;
+    let mut frames = Vec::new();
+    for raw in text.split(',') {
+        let parts: Vec<&str> = raw.split('|').collect();
+        if parts.len() < 4 || parts[0] == SEED_FRAME_DELTA {
+            continue;
+        }
+        let malformed = || format!("malformed replay frame {raw:?}");
+        let delta: f64 = parts[0].parse().with_context(malformed)?;
+        time += delta.round() as i64;
+        frames.push(Frame {
+            time,
+            x: parts[1].parse().with_context(malformed)?,
+            y: parts[2].parse().with_context(malformed)?,
+            keys: parts[3].parse().with_context(malformed)?,
+        });
+    }
+    Ok(frames)
+}
+
+fn decompress(data: &[u8]) -> Result<String> {
+    if data.is_empty() {
+        return Ok(String::new());
+    }
+    let mut input = data;
+    let mut out = Vec::new();
+    lzma_rs::lzma_decompress(&mut input, &mut out)?;
+    Ok(String::from_utf8(out)?)
+}
+
 fn read_exact_vec(r: &mut impl Read, len: usize) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
     r.take(len as u64).read_to_end(&mut buf)?;
     ensure!(buf.len() == len, "unexpected end of replay file");
     Ok(buf)
+}
+
+fn read_byte_array(r: &mut impl Read) -> Result<Vec<u8>> {
+    let len = read_i32(r)?;
+    if len <= 0 {
+        return Ok(Vec::new());
+    }
+    read_exact_vec(r, len as usize)
 }
 
 fn read_string(r: &mut impl Read) -> Result<String> {
@@ -188,6 +250,10 @@ mod tests {
         read_header(&mut osr.bytes().as_slice()).unwrap()
     }
 
+    fn parse(osr: Osr) -> Result<Replay> {
+        read_replay(&mut osr.bytes().as_slice())
+    }
+
     #[test]
     fn reads_header_fields() {
         let header = header(Osr::default());
@@ -257,5 +323,118 @@ mod tests {
         let header = read_header(&mut &header_only[..]).unwrap();
 
         assert_eq!(header.player, "player");
+    }
+
+    #[test]
+    fn frame_times_accumulate_deltas() {
+        let osr = Osr {
+            frames: "0|256|-500|0,-1|256|-500|0,16|100.5|200.25|1,17|101|201|5,",
+            ..Osr::default()
+        };
+
+        let frames = parse(osr).unwrap().frames;
+
+        let times: Vec<i64> = frames.iter().map(|f| f.time).collect();
+        assert_eq!(times, [0, -1, 15, 32]);
+        assert_eq!(
+            frames[2],
+            Frame {
+                time: 15,
+                x: 100.5,
+                y: 200.25,
+                keys: 1
+            }
+        );
+    }
+
+    #[test]
+    fn seed_frame_is_skipped() {
+        let osr = Osr {
+            frames: "16|1|2|0,-12345|0|0|987654,",
+            ..Osr::default()
+        };
+
+        assert_eq!(parse(osr).unwrap().frames.len(), 1);
+    }
+
+    #[test]
+    fn fractional_delta_is_rounded() {
+        let osr = Osr {
+            frames: "16.6|1|2|0,",
+            ..Osr::default()
+        };
+
+        assert_eq!(parse(osr).unwrap().frames[0].time, 17);
+    }
+
+    #[test]
+    fn empty_replay_data_has_no_frames() {
+        let osr = Osr {
+            frames: "",
+            ..Osr::default()
+        };
+
+        assert!(parse(osr).unwrap().frames.is_empty());
+    }
+
+    #[test]
+    fn negative_replay_data_length_has_no_frames() {
+        let mut bytes = Osr {
+            frames: "",
+            ..Osr::default()
+        }
+        .bytes();
+        let len_at = bytes.len() - 4;
+        bytes[len_at..].copy_from_slice(&(-1i32).to_le_bytes());
+
+        assert!(
+            read_replay(&mut bytes.as_slice())
+                .unwrap()
+                .frames
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn corrupt_length_prefix_is_an_error() {
+        let mut bytes = Osr::default().bytes();
+        let len_at = bytes.len() - compress("0|256|192|0,").len() - 4;
+        bytes[len_at..len_at + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+
+        assert!(read_replay(&mut bytes.as_slice()).is_err());
+    }
+
+    #[test]
+    fn malformed_frame_is_an_error() {
+        let osr = Osr {
+            frames: "16|abc|2|0,",
+            ..Osr::default()
+        };
+
+        let error = parse(osr).unwrap_err();
+
+        assert!(format!("{error:#}").contains("malformed replay frame"));
+    }
+
+    #[test]
+    fn real_replays_parse() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            eprintln!("skipped: no {}", dir.display());
+            return;
+        };
+        for path in entries.map(|e| e.unwrap().path()) {
+            if path.extension().is_none_or(|ext| ext != "osr") {
+                continue;
+            }
+            let replay = read_replay(&mut std::fs::File::open(&path).unwrap())
+                .unwrap_or_else(|e| panic!("{}: {e:#}", path.display()));
+            let header = read_header(&mut std::fs::File::open(&path).unwrap()).unwrap();
+
+            assert_eq!(header, replay.header);
+            assert_eq!(header.beatmap_md5.len(), 32);
+            assert!(replay.frames.len() > 100, "{}", path.display());
+            assert!(replay.frames.last().unwrap().time > 0);
+        }
     }
 }
