@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use iced::widget::{button, canvas, column, row, scrollable, space, text};
 use iced::{Center, Element, Task};
 use osu_tablet_optimizer::core::aim::{self, Report};
-use osu_tablet_optimizer::core::fit::{Estimate, Mapping};
+use osu_tablet_optimizer::core::fit::{Estimate, Mapping, Settings};
 
 use crate::app::{self, App};
 use crate::ui::{charts, setup};
@@ -23,49 +24,81 @@ const CHART_SIZE: f32 = 360.0;
 #[derive(Debug, Default)]
 pub struct State {
     running: bool,
-    pub report: Option<Arc<Report>>,
+    // Analyze was pressed during a run; run again once it ends.
+    queued: bool,
+    pub last: Option<Arc<Analysis>>,
+}
+
+#[derive(Debug)]
+pub struct Analysis {
+    selection: HashSet<PathBuf>,
+    // OpenTabletDriver's mapping the fit ran against; None when the neutral one stood in.
+    pub otd_mapping: Option<Mapping>,
+    settings: Settings,
+    pub report: Report,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Run,
-    Done(Arc<Report>),
+    Done(Arc<Analysis>),
     Failed,
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
     match message {
         Message::Run => return start(app),
-        Message::Done(report) => {
-            app.analysis.running = false;
-            app.analysis.report = Some(report);
-        }
+        Message::Done(analysis) => app.analysis.last = Some(analysis),
         Message::Failed => {
-            app.analysis.running = false;
             app.notice = Some("The analysis failed unexpectedly.".to_string());
         }
+    }
+    app.analysis.running = false;
+    if std::mem::take(&mut app.analysis.queued) {
+        return start(app);
     }
     Task::none()
 }
 
 // Reads and fits the selected replays on a worker thread.
 pub fn start(app: &mut App) -> Task<app::Message> {
-    if app.analysis.running || app.replays.selected.is_empty() {
+    if app.replays.selected.is_empty() {
+        return Task::none();
+    }
+    if app.analysis.running {
+        app.analysis.queued = true;
         return Task::none();
     }
     app.analysis.running = true;
     let library = Arc::clone(&app.library);
-    let paths: Vec<PathBuf> = app.replays.selected.iter().cloned().collect();
-    let mapping = setup::profile(app).map_or(NEUTRAL_MAPPING, |profile| profile.mapping);
+    let selection = app.replays.selected.clone();
+    let otd_mapping = otd_mapping(app);
     let settings = app.config.fit;
     let (sender, receiver) = iced::futures::channel::oneshot::channel();
     std::thread::spawn(move || {
+        let paths: Vec<PathBuf> = selection.iter().cloned().collect();
+        let mapping = otd_mapping.unwrap_or(NEUTRAL_MAPPING);
         let report = aim::analyse(&paths, &library.beatmaps_by_md5(), mapping, &settings);
-        let _ = sender.send(Arc::new(report));
+        let _ = sender.send(Arc::new(Analysis {
+            selection,
+            otd_mapping,
+            settings,
+            report,
+        }));
     });
-    Task::perform(receiver, |report| {
-        app::Message::Analysis(report.map_or(Message::Failed, Message::Done))
+    Task::perform(receiver, |analysis| {
+        app::Message::Analysis(analysis.map_or(Message::Failed, Message::Done))
     })
+}
+
+fn otd_mapping(app: &App) -> Option<Mapping> {
+    setup::profile(app).map(|profile| profile.mapping)
+}
+
+fn is_outdated(analysis: &Analysis, app: &App) -> bool {
+    analysis.selection != app.replays.selected
+        || analysis.otd_mapping != otd_mapping(app)
+        || analysis.settings != app.config.fit
 }
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
@@ -74,7 +107,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         (!state.running && !app.replays.selected.is_empty())
             .then_some(app::Message::Analysis(Message::Run)),
     );
-    let Some(report) = &state.report else {
+    let Some(analysis) = &state.last else {
         let hint = if state.running {
             "Analysing…"
         } else {
@@ -83,6 +116,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         return column![text(hint), again].spacing(12).into();
     };
 
+    let report = &analysis.report;
     let summary = text(format!(
         "{} replays analysed, {} skipped, {} jumps used.{}",
         report.analysed,
@@ -174,16 +208,13 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     }))
     .spacing(4);
 
-    scrollable(
-        column![
-            row![summary, space::horizontal(), again].align_y(Center),
-            numbers,
-            charts,
-            skipped
-        ]
-        .spacing(24),
-    )
-    .into()
+    let mut page = column![row![summary, space::horizontal(), again].align_y(Center)].spacing(24);
+    if !state.running && is_outdated(analysis, app) {
+        page = page.push(text(
+            "The selection or setup changed since this analysis. Analyse again to update.",
+        ));
+    }
+    scrollable(page.push(numbers).push(charts).push(skipped)).into()
 }
 
 fn metric<'a>(

@@ -90,6 +90,8 @@ pub struct Suggestion {
     pub rotation: Estimate,
     // Skew OTD cannot express; left over after the area fit (degrees).
     pub shear: f64,
+    // Constant distance (osu!pixels) added to every jump; negative = stopping at the circle's edge.
+    pub edge_stop: f64,
     // Size, aspect and rotation each stay unchanged when their interval contains "no change";
     // deciding width and height separately could invent an aspect change the data does not show.
     pub full: Mapping,
@@ -137,9 +139,10 @@ impl Normal {
         }
     }
 
-    fn gain(&self) -> Option<Mat2> {
-        let [b00, b01, b10, b11, _edge_stop] = solve(self.a, self.b)?;
-        Some([[b00, b01], [b10, b11]])
+    // Gain matrix and edge stop.
+    fn fit(&self) -> Option<(Mat2, f64)> {
+        let [b00, b01, b10, b11, edge_stop] = solve(self.a, self.b)?;
+        Some(([[b00, b01], [b10, b11]], edge_stop))
     }
 }
 
@@ -172,7 +175,7 @@ pub fn suggest(
     for (_, normal) in &groups {
         total.add(normal);
     }
-    let gain = total.gain()?;
+    let (gain, edge_stop) = total.fit()?;
     let (mapping, shear) = corrected(current, &gain)?;
 
     let mut rng = Rng(samples as u64);
@@ -182,7 +185,7 @@ pub fn suggest(
             for _ in 0..groups.len() {
                 resample.add(&groups[rng.below(groups.len())].1);
             }
-            let matrix = resample.gain()?;
+            let (matrix, _) = resample.fit()?;
             Some((matrix, corrected(current, &matrix)?.0))
         })
         .collect();
@@ -228,6 +231,7 @@ pub fn suggest(
         aspect,
         rotation,
         shear,
+        edge_stop,
         full,
         capped,
     })
@@ -500,6 +504,15 @@ mod tests {
         assert!((suggestion.full.area_width - 110.0).abs() < 1.0);
         assert_close(suggestion.capped.area_width, 103.0);
         assert_close(suggestion.capped.area_height, 56.25 * 1.03);
+    }
+
+    #[test]
+    fn suggestion_reports_the_edge_stop() {
+        let samples = synthetic([[1.0, 0.0], [0.0, 1.0]], -9.0, 0.0);
+
+        let suggestion = suggest(&replays(&samples), MAPPING, &Settings::default()).unwrap();
+
+        assert_close(suggestion.edge_stop, -9.0);
     }
 
     #[test]

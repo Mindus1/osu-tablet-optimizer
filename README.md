@@ -23,7 +23,8 @@ Status: in development. Setup, the replay list and the analysis work; area sugge
    - **Horizontal ÷ vertical:** below 1 means horizontal moves fall shorter than vertical ones.
    - **Shear:** a skew OpenTabletDriver can't correct; shown for information.
    - **Error scatter:** each dot is one jump's error, along the jump (right = too far) and across it. The circle is the hit radius.
-   - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot.
+   - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot. Stopping at the circle's edge is left out, as in the Overshoot number, and directions with fewer than 10 jumps are left open.
+   - When you change the selection or setup afterwards, the page says so; press *Analyse selected again* to update.
 
 The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
 

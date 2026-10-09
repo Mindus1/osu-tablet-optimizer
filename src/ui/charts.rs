@@ -1,11 +1,13 @@
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text};
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme, mouse};
-use osu_tablet_optimizer::core::aim::Sector;
+use osu_tablet_optimizer::core::aim::{self, Sector};
 
 // Errors within this many radii are drawn; the circle marks one radius (a hit).
 const SCATTER_RANGE: f32 = 3.0;
 // Gain and turn differences are a few percent or degrees; magnify them so the shape shows.
 const MAGNIFICATION: f64 = 5.0;
+// Largest outline radius in rings; the ring is sized so that it still fits the chart.
+const MAX_SCALE: f64 = 1.4;
 
 pub struct Scatter<'a> {
     pub errors: &'a [(f64, f64)],
@@ -94,40 +96,43 @@ impl<Message> canvas::Program<Message> for Polar<'_> {
         let mut frame = Frame::new(renderer, bounds.size());
         let palette = theme.extended_palette();
         let center = frame.center();
-        let ring = bounds.width.min(bounds.height) / 2.0 * 0.7;
+        let ring = bounds.width.min(bounds.height) / 2.0 / MAX_SCALE as f32;
         frame.stroke(
             &Path::circle(center, ring),
             Stroke::default()
                 .with_color(palette.background.strong.color)
                 .with_width(1.0),
         );
-        let points: Vec<Point> = self
-            .sectors
-            .iter()
-            .filter(|sector| sector.samples > 0)
-            .map(|sector| {
-                let angle = (sector.direction + sector.turn * MAGNIFICATION).to_radians();
-                let radius = ring * (1.0 + (sector.gain - 1.0) * MAGNIFICATION).max(0.0) as f32;
-                Point::new(
-                    center.x + radius * angle.cos() as f32,
-                    center.y + radius * angle.sin() as f32,
-                )
-            })
-            .collect();
-        if let Some((first, rest)) = points.split_first() {
+        let stroke = Stroke::default()
+            .with_color(palette.primary.base.color)
+            .with_width(2.0);
+        for run in aim::outline_runs(self.sectors) {
+            let closed = run.len() == self.sectors.len();
+            let points: Vec<Point> = run
+                .iter()
+                .map(|sector| {
+                    let angle = (sector.direction + sector.turn * MAGNIFICATION).to_radians();
+                    let scale = (1.0 + (sector.gain - 1.0) * MAGNIFICATION).clamp(0.0, MAX_SCALE);
+                    let radius = ring * scale as f32;
+                    Point::new(
+                        center.x + radius * angle.cos() as f32,
+                        center.y + radius * angle.sin() as f32,
+                    )
+                })
+                .collect();
             let outline = Path::new(|builder| {
-                builder.move_to(*first);
-                for point in rest {
-                    builder.line_to(*point);
+                for (index, point) in points.iter().enumerate() {
+                    if index == 0 {
+                        builder.move_to(*point);
+                    } else {
+                        builder.line_to(*point);
+                    }
                 }
-                builder.close();
+                if closed {
+                    builder.close();
+                }
             });
-            frame.stroke(
-                &outline,
-                Stroke::default()
-                    .with_color(palette.primary.base.color)
-                    .with_width(2.0),
-            );
+            frame.stroke(&outline, stroke);
         }
         vec![frame.into_geometry()]
     }
