@@ -299,7 +299,7 @@ fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::fs::FileTimes;
     use std::time::Duration;
 
@@ -309,17 +309,17 @@ mod tests {
     const BEATMAP: &str =
         "osu file format v14\n\n[Metadata]\nTitle:Song\nArtist:Band\nVersion:Hard\n";
 
-    struct TempDir(PathBuf);
+    pub(crate) struct TempDir(pub(crate) PathBuf);
 
     impl TempDir {
-        fn new(name: &str) -> TempDir {
+        pub(crate) fn new(name: &str) -> TempDir {
             let dir = std::env::temp_dir().join(format!("oto-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             TempDir(dir)
         }
 
-        fn write(&self, relative: &str, bytes: impl AsRef<[u8]>) -> PathBuf {
+        pub(crate) fn write(&self, relative: &str, bytes: impl AsRef<[u8]>) -> PathBuf {
             let path = self.0.join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, bytes).unwrap();
