@@ -80,12 +80,15 @@ pub struct Suggestion {
     pub rotation_bias: Estimate,
     // Horizontal gain over vertical gain.
     pub axis_ratio: Estimate,
-    pub width: Estimate,
-    pub height: Estimate,
+    // Area scale (geometric mean of the width and height factors): 0.98 = 2% smaller.
+    pub size: Estimate,
+    // Change of the width/height ratio: 1.02 = 2% wider relative to its height.
+    pub aspect: Estimate,
     pub rotation: Estimate,
     // Skew OTD cannot express; left over after the area fit (degrees).
     pub shear: f64,
-    // Each parameter keeps its current value when its interval contains it.
+    // Size, aspect and rotation each stay unchanged when their interval contains "no change";
+    // deciding width and height separately could invent an aspect change the data does not show.
     pub full: Mapping,
     pub capped: Mapping,
 }
@@ -180,16 +183,21 @@ pub fn suggest(
             Some((matrix, corrected(current, &matrix)?.0))
         })
         .collect();
-    let estimate = |value: f64, round: fn(&(Mat2, Mapping)) -> f64| {
+    let estimate = |value: f64, round: &dyn Fn(&(Mat2, Mapping)) -> f64| {
         Estimate::new(value, rounds.iter().map(round))
     };
+    let width_factor = |m: &Mapping| m.area_width / current.area_width;
+    let height_factor = |m: &Mapping| m.area_height / current.area_height;
+    let size_of = |m: &Mapping| (width_factor(m) * height_factor(m)).sqrt();
+    let aspect_of = |m: &Mapping| width_factor(m) / height_factor(m);
 
-    let width = estimate(mapping.area_width, |(_, m)| m.area_width);
-    let height = estimate(mapping.area_height, |(_, m)| m.area_height);
-    let rotation = estimate(mapping.rotation, |(_, m)| m.rotation);
+    let size = estimate(size_of(&mapping), &|(_, m)| size_of(m));
+    let aspect = estimate(aspect_of(&mapping), &|(_, m)| aspect_of(m));
+    let rotation = estimate(mapping.rotation, &|(_, m)| m.rotation);
+    let (kept_size, kept_aspect) = (keep(size, 1.0), keep(aspect, 1.0));
     let full = Mapping {
-        area_width: keep(width, current.area_width),
-        area_height: keep(height, current.area_height),
+        area_width: current.area_width * kept_size * kept_aspect.sqrt(),
+        area_height: current.area_height * kept_size / kept_aspect.sqrt(),
         rotation: keep(rotation, current.rotation),
         ..current
     };
@@ -210,11 +218,11 @@ pub fn suggest(
     Some(Suggestion {
         replays: groups.len(),
         samples,
-        overshoot: estimate(overshoot(&gain), |(m, _)| overshoot(m)),
-        rotation_bias: estimate(rotation_bias(&gain), |(m, _)| rotation_bias(m)),
-        axis_ratio: estimate(axis_ratio(&gain), |(m, _)| axis_ratio(m)),
-        width,
-        height,
+        overshoot: estimate(overshoot(&gain), &|(m, _)| overshoot(m)),
+        rotation_bias: estimate(rotation_bias(&gain), &|(m, _)| rotation_bias(m)),
+        axis_ratio: estimate(axis_ratio(&gain), &|(m, _)| axis_ratio(m)),
+        size,
+        aspect,
         rotation,
         shear,
         full,
@@ -484,8 +492,8 @@ mod tests {
 
         let suggestion = suggest(&replays(&samples), MAPPING, &Settings::default()).unwrap();
 
-        assert!((suggestion.width.value - 110.0).abs() < 1.0);
-        assert!(!suggestion.width.contains(MAPPING.area_width));
+        assert!((suggestion.size.value - 1.1).abs() < 0.01);
+        assert!(!suggestion.size.contains(1.0));
         assert!((suggestion.full.area_width - 110.0).abs() < 1.0);
         assert_close(suggestion.capped.area_width, 103.0);
         assert_close(suggestion.capped.area_height, 56.25 * 1.03);
@@ -507,7 +515,8 @@ mod tests {
 
         let suggestion = suggest(&replays(&samples), MAPPING, &Settings::default()).unwrap();
 
-        assert!(suggestion.width.contains(MAPPING.area_width));
+        assert!(suggestion.size.contains(1.0));
+        assert!(suggestion.aspect.contains(1.0));
         assert_eq!(suggestion.full, MAPPING);
         assert_eq!(suggestion.capped, MAPPING);
     }
@@ -523,9 +532,31 @@ mod tests {
 
         let suggestion = suggest(&sessions, MAPPING, &Settings::default()).unwrap();
 
-        assert!(suggestion.width.high - suggestion.width.low > 2.0);
-        assert!(suggestion.width.contains(MAPPING.area_width));
+        assert!(suggestion.size.high - suggestion.size.low > 0.02);
+        assert!(suggestion.size.contains(1.0));
         assert_eq!(suggestion.full.area_width, MAPPING.area_width);
+    }
+
+    #[test]
+    fn insignificant_aspect_keeps_the_area_ratio() {
+        let sessions: Vec<Vec<Sample>> = (0..10)
+            .map(|i| {
+                let skew = if i % 2 == 0 { 0.05 } else { -0.05 };
+                synthetic(
+                    [[0.96 * (1.0 + skew), 0.0], [0.0, 0.985 * (1.0 - skew)]],
+                    0.0,
+                    0.0,
+                )
+            })
+            .collect();
+
+        let suggestion = suggest(&sessions, MAPPING, &Settings::default()).unwrap();
+
+        assert!(suggestion.full.area_width < MAPPING.area_width);
+        assert_close(
+            suggestion.full.area_width / suggestion.full.area_height,
+            MAPPING.area_width / MAPPING.area_height,
+        );
     }
 
     #[test]
