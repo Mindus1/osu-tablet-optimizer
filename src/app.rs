@@ -228,7 +228,7 @@ impl App {
             let marker = if active {
                 style::ring(style::PINK, 10.0)
             } else {
-                style::dot(iced::Color::TRANSPARENT, 10.0)
+                space().width(10).into()
             };
             button(row![marker, text(page.label())].spacing(12).align_y(Center))
                 .width(Fill)

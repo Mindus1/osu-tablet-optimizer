@@ -206,7 +206,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     .spacing(8);
     let osu = section(
         "osu! folders",
-        "Where your replays and beatmaps are. stable and lazer are found on their own.",
+        "Where your replays and beatmaps are. osu!stable and osu!lazer are found on their own.",
         column![
             osu_roots,
             row![
@@ -346,9 +346,7 @@ fn tablet_section(app: &App) -> Element<'_, app::Message> {
         "The active area's size keeps exported areas on the tablet.",
         column![
             column![
-                text(tablet.unwrap_or("Tablet"))
-                    .size(15)
-                    .font(style::SEMIBOLD),
+                tablet.map(|name| text(name).size(15).font(style::SEMIBOLD)),
                 style::muted(source),
             ]
             .spacing(2),

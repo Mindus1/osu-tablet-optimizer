@@ -1,4 +1,4 @@
-use iced::widget::{canvas, column, container, row, space, text};
+use iced::widget::{canvas, column, row, text};
 use iced::{Center, Element, Fill, FillPortion, Task};
 use osu_tablet_optimizer::core::fit::{Mapping, Suggestion};
 use osu_tablet_optimizer::core::otd::{self, Profile};
@@ -84,7 +84,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     let legend = row![
         legend_entry(style::swatch(style::MUTED), "Now"),
         legend_entry(style::swatch(style::PINK), "Capped step"),
-        legend_entry(dashed_swatch(), "Full fit"),
+        legend_entry(style::dashed_swatch(style::PINK), "Full fit"),
     ]
     .spacing(20);
     let mut preview_panel = column![preview, legend].spacing(16);
@@ -218,18 +218,6 @@ fn legend_entry<'a>(
         .spacing(8)
         .align_y(Center)
         .into()
-}
-
-fn dashed_swatch<'a>() -> Element<'a, app::Message> {
-    row((0..3).map(|_| {
-        container(space())
-            .width(4)
-            .height(2)
-            .style(|_| container::Style::default().background(style::PINK))
-            .into()
-    }))
-    .spacing(3)
-    .into()
 }
 
 fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {

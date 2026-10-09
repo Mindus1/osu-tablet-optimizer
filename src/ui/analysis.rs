@@ -19,7 +19,7 @@ const NEUTRAL_MAPPING: Mapping = Mapping {
     display_width: 1920.0,
     display_height: 1080.0,
 };
-const CHART_SIZE: f32 = 340.0;
+const CHART_HEIGHT: f32 = 340.0;
 const MAX_SKIPPED: usize = 20;
 
 #[derive(Debug, Default)]
@@ -114,9 +114,10 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         let (about, content): (&str, Element<'_, app::Message>) = if state.running {
             (
                 "Reading your replays and fitting your aim…",
-                style::panel(style::muted(
-                    "This takes a few seconds per hundred replays.",
-                ))
+                style::panel(style::muted(format!(
+                    "Analyzing {} replays.",
+                    app.replays.selected.len()
+                )))
                 .into(),
             )
         } else {
@@ -149,10 +150,11 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         }
     );
     let outdated = !state.running && is_outdated(analysis, app);
+    let again_label = format!("Analyze {} selected", app.replays.selected.len());
     let again = if outdated {
-        style::primary("Analyze selected again")
+        style::primary(again_label)
     } else {
-        style::secondary("Analyze selected again")
+        style::secondary(again_label)
     }
     .on_press_maybe(
         (!state.running && !app.replays.selected.is_empty())
@@ -288,7 +290,7 @@ fn chart<'a>(
         column![
             style::heading(title),
             style::muted(about),
-            canvas.width(Fill).height(CHART_SIZE)
+            canvas.width(Fill).height(CHART_HEIGHT)
         ]
         .spacing(8),
     )

@@ -183,8 +183,8 @@ fn table(app: &App) -> Element<'_, app::Message> {
         let hint = if app.scanning.is_some() {
             "Your osu! folders are being scanned; replays show up here when it finishes."
         } else {
-            "No replays match. Try another period or area, or check the players and osu! \
-             folders in Setup."
+            "No replays match. Try another period, area or search, or check the players and \
+             osu! folders in Setup."
         };
         return style::panel(style::muted(hint)).into();
     }
@@ -234,7 +234,7 @@ fn table(app: &App) -> Element<'_, app::Message> {
     style::panel(column![
         header,
         style::divider(),
-        style::scroll(rows).height(Fill),
+        style::overlay_scroll(rows).height(Fill),
         style::divider(),
         footer
     ])

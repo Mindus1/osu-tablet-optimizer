@@ -106,11 +106,18 @@ pub fn banner<'a, M: 'a>(tone: Color, content: impl Into<Element<'a, M>>) -> Con
 // A scroll area with a thin scrollbar kept clear of the content.
 pub fn scroll<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Scrollable<'a, M> {
     scrollable(content).direction(scrollable::Direction::Vertical(
-        scrollable::Scrollbar::new()
-            .width(6)
-            .scroller_width(6)
-            .spacing(12),
+        thin_scrollbar().spacing(12),
     ))
+}
+
+// The scrollbar floats over the content's edge instead, so scrolled rows keep the width of a
+// header row outside the scroll area.
+pub fn overlay_scroll<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Scrollable<'a, M> {
+    scrollable(content).direction(scrollable::Direction::Vertical(thin_scrollbar()))
+}
+
+fn thin_scrollbar() -> scrollable::Scrollbar {
+    scrollable::Scrollbar::new().width(6).scroller_width(6)
 }
 
 pub fn heading<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
@@ -146,10 +153,18 @@ fn circle<'a, M: 'a>(fill: Color, size: f32, outline: Option<Color>) -> Element<
         .into()
 }
 
-// A short line for chart legends.
+// Short solid and dashed lines for chart legends.
 pub fn swatch<'a, M: 'a>(color: Color) -> Element<'a, M> {
+    bar(color, 18.0)
+}
+
+pub fn dashed_swatch<'a, M: 'a>(color: Color) -> Element<'a, M> {
+    row((0..3).map(|_| bar(color, 4.0))).spacing(3).into()
+}
+
+fn bar<'a, M: 'a>(color: Color, width: f32) -> Element<'a, M> {
     container(space())
-        .width(18)
+        .width(width)
         .height(2)
         .style(move |_| container::Style::default().background(color))
         .into()
