@@ -6,6 +6,15 @@ Suggestions are exported as OTD presets, so your current settings stay untouched
 
 Status: in development. Setup, the replay list, the analysis and area suggestions work; history is next.
 
+## Download
+
+Each release on the [Releases page](https://github.com/Mindus1/osu-tablet-optimizer/releases) has a build for each platform:
+- Windows: `osu-tablet-optimizer-windows-x64.exe`
+- Linux: `osu-tablet-optimizer-linux-x64.tar.gz`
+- macOS on Apple silicon: `osu-tablet-optimizer-macos-arm64.tar.gz`
+
+The builds are unsigned, so Windows SmartScreen or macOS may ask before the first start. On macOS, allow it under *System Settings → Privacy & Security*.
+
 ## Usage
 
 1. **Setup** opens on first start.
