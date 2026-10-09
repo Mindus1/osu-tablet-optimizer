@@ -7,10 +7,10 @@
 **Architecture:** One module, `src/core/hits.rs`.
 - **Presses:** key presses are rising edges of key A (M1|K1) or key B (M2|K2).
 - **Matching:** each circle or slider head takes the first unused press inside its Meh window, `floor(200 − 10·OD) − 0.5` ms. Hit windows are in map time, which is also what replay frames use, so DT/HT need no correction.
-- **Samples:** a sample needs this hit and the previous hit. The previous object must be a circle (slider ends are out of scope), the gap must be ≤ 1000 ms, and the target can't be stacked (within 3 px of a neighbour).
+- **Samples:** a sample needs this hit and the previous hit. The previous object must be a circle (slider ends are out of scope), the gap must be ≤ 1000 ms, and the target can't be stacked (within 3 px of any object in a 2 s window; corrected after the final review, it was "a neighbour").
 - **Chain breaks:** spinners break the chain.
 - **Mods:** HR flips Y and scales CS ×1.3 and OD ×1.4 (capped at 10). EZ halves both. lazer's MR flips by its `reflection` setting. DA overrides CS/OD. Anything outside a whitelist of position-neutral mods is rejected with a reason.
-- **Old maps:** for beatmap format < 5, press times shift +24 ms (lazer's `EARLY_VERSION_TIMING_OFFSET`).
+- **Old maps:** no time shift. lazer adds `EARLY_VERSION_TIMING_OFFSET` (24 ms) to both the objects and the replay frames, so the raw times already line up (corrected after the final review; Task 1 below still shows the original one-sided shift).
 
 The threshold filters (`|intended| ≥ 3r`, outliers `|actual − intended| ≤ 3r`) belong to the fit (feature 5), where they're configurable.
 
