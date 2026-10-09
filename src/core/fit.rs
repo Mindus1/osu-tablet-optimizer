@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::core::hits::Sample;
 
 // ponytail: fixed statistics knobs; expose them in Setup if users ask.
@@ -10,7 +12,8 @@ const TAIL: f64 = 0.05;
 
 type Mat2 = [[f64; 2]; 2];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub min_jump_radii: f64,
     pub max_error_radii: f64,
