@@ -13,3 +13,7 @@ Requires [Rust](https://rustup.rs) (stable).
 ```sh
 cargo run --release
 ```
+
+## Credits
+
+Tablet dimensions in `src/core/tablets.tsv` come from [OpenTabletDriver](https://github.com/OpenTabletDriver/OpenTabletDriver)'s tablet configurations (LGPL-3.0).
