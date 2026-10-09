@@ -787,5 +787,15 @@ fn verdict(estimate: Estimate, neutral: f64, above: &str, below: &str) -> String
 
 ## Notes for later features
 
-- Feature 9: reuse `app.analysis.report`'s `suggestion` (computed with the real OTD mapping when a profile is set) for the Area page. When the analysis ran without OTD, the area numbers must not be shown; rerun after choosing the OTD folder.
+- Feature 9: reuse `app.analysis.last` for the Area page: `report.suggestion` plus `otd_mapping`, the mapping it was fitted against. When `otd_mapping` is `None` (no OTD set up), don't show area numbers; when it differs from the current profile's mapping, the page already says the analysis is outdated.
+- Deferred from the final review (minor):
+  - Shear depends on the mapping, so the `NEUTRAL_MAPPING` comment ("metrics don't depend on it") is wrong for shear.
+  - An invalid OTD mapping (zero or non-finite sizes) shows "Not enough data" instead of naming the mapping.
+  - Charts aren't cached (`canvas::Cache`); the scatter redraws about 10k rectangles every frame.
+  - The headline is rounded to 1 decimal but the interval to 2. Shear looks like a measured number although it has no interval.
+  - The skipped list stops at 20 without "…and N more", and the failure notice isn't cleared by the next successful run.
+  - "Analyse" (Analysis page) vs "Analyze" (Replays page, README): pick one spelling.
+  - "Replays analysed" counts replays without any usable jump.
+  - A large turn magnification can make outline points cross. A run of a single sector draws nothing.
+  - Intervals change slightly between runs of the same selection, because paths come from a `HashSet` and that order feeds the bootstrap. Sort the paths.
 - Deferred from feature 7: hidden selections still count. Decide in feature 9 whether *Analyze* should use only the visible selection.
