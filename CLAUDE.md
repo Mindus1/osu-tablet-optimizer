@@ -54,5 +54,5 @@ Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `
 2. Propose the bump with a one-line reason and wait for confirmation: patch = fixes only, minor = new features, major = milestone/breaking.
 3. On `dev`: bump `version` in Cargo.toml, update README if needed, commit `chore: release vX.Y.Z`.
 4. `gh pr create --base main --head dev`, then `gh pr merge --merge`.
-5. On main: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z` (`-m` is required because tag signing is enabled). The Release workflow builds Windows/Linux/macOS and publishes the GitHub release. Confirm with `gh run watch`.
+5. On main: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z` (`-m` is required because tag signing is enabled). The workflow refuses tags whose version differs from `Cargo.toml` (pre-release suffixes like `-rc1` are allowed). The Release workflow builds Windows/Linux/macOS and publishes the GitHub release. Confirm with `gh run watch`.
 6. `git switch dev && git merge --ff-only main && git push`.
