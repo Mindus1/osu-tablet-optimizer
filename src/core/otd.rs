@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::core::fit::Mapping;
@@ -22,6 +23,8 @@ pub struct Profile {
 pub struct OtdSettings {
     pub revision: String,
     pub profiles: Vec<Profile>,
+    // When OpenTabletDriver last saved them (ms since the Unix epoch).
+    pub saved_at_ms: i64,
     json: Value,
 }
 
@@ -61,9 +64,13 @@ impl OtdSettings {
             .map(profile)
             .collect::<Result<_>>()
             .with_context(|| format!("reading profiles in {}", path.display()))?;
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .with_context(|| format!("reading {}", path.display()))?;
         Ok(OtdSettings {
             revision: json["Revision"].as_str().unwrap_or_default().to_string(),
             profiles,
+            saved_at_ms: DateTime::<Utc>::from(modified).timestamp_millis(),
             json,
         })
     }
@@ -192,9 +199,10 @@ fn profile(value: &Value) -> Result<Profile> {
     let display = &area["Display"];
     Ok(Profile {
         tablet: value["Tablet"].as_str().unwrap_or_default().to_string(),
+        // Linux Artist Mode maps the area absolutely too.
         absolute: value["OutputMode"]["Path"]
             .as_str()
-            .is_some_and(|path| path.contains("Absolute")),
+            .is_some_and(|path| path.contains("Absolute") || path.contains("ArtistMode")),
         mapping: Mapping {
             area_width: number(&tablet["Width"], "tablet area width")?,
             area_height: number(&tablet["Height"], "tablet area height")?,
@@ -306,10 +314,39 @@ mod tests {
     }
 
     #[test]
+    fn linux_artist_mode_is_absolute() {
+        let settings = SETTINGS.replace(
+            "OpenTabletDriver.Desktop.Output.RelativeMode",
+            "OpenTabletDriver.Desktop.Output.LinuxArtistMode",
+        );
+        let (_dir, settings) = installed("otd-artist", &settings);
+
+        assert!(settings.profiles[1].absolute);
+    }
+
+    #[test]
     fn settings_with_a_byte_order_mark_load() {
         let (_dir, settings) = installed("otd-bom", &format!("\u{feff}{SETTINGS}"));
 
         assert_eq!(settings.profiles.len(), 2);
+    }
+
+    #[test]
+    fn settings_know_when_they_were_saved() {
+        let dir = TempDir::new("otd-saved");
+        let path = dir.write("settings.json", SETTINGS);
+        let saved = std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_700_000_000_000);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(saved)
+            .unwrap();
+
+        assert_eq!(
+            OtdSettings::load(&dir.0).unwrap().saved_at_ms,
+            1_700_000_000_000
+        );
     }
 
     #[test]

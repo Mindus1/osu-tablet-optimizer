@@ -1,18 +1,17 @@
-use iced::widget::{button, canvas, column, row, text};
-use iced::{Element, Task};
+use iced::widget::{canvas, column, row, text};
+use iced::{Center, Element, Fill, FillPortion, Task};
 use osu_tablet_optimizer::core::fit::{Mapping, Suggestion};
 use osu_tablet_optimizer::core::otd::{self, Profile};
 
 use crate::app::{self, App};
-use crate::ui::{charts, setup};
+use crate::ui::{charts, setup, style};
 
-const PREVIEW_SIZE: (f32, f32) = (400.0, 250.0);
-const COLUMN_WIDTH: f32 = 150.0;
+const PREVIEW_HEIGHT: f32 = 280.0;
 
 #[derive(Debug, Default)]
 pub struct State {
-    // Outcome of the last export.
-    exported: Option<String>,
+    // Outcome of the last export: what to tell the user, as saved or failed.
+    exported: Option<Result<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,12 +50,12 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
         &base,
     );
     app.area.exported = Some(match exported {
-        Ok(path) => format!(
+        Ok(path) => Ok(format!(
             "Saved preset {}. In OpenTabletDriver, choose it under File → Presets \
              (Refresh presets first if it's running).",
             path.file_stem().unwrap_or_default().to_string_lossy()
-        ),
-        Err(error) => format!("{error:#}"),
+        )),
+        Err(error) => Err(format!("{error:#}")),
     });
     // A refused export usually means OTD's settings changed; show them as they are now.
     app.reload_otd();
@@ -64,9 +63,12 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
 }
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
+    const ABOUT: &str = "Your suggested tablet area, next to the one you use now.";
     let proposal = match proposal(app) {
         Ok(proposal) => proposal,
-        Err(reason) => return text(reason).into(),
+        Err(reason) => {
+            return style::page("Area", ABOUT, row![], style::panel(style::muted(reason)));
+        }
     };
     let (profile, suggestion) = (proposal.profile, proposal.suggestion);
     let tablet_size = setup::tablet_size(app);
@@ -77,44 +79,57 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         full: otd::corners(center(&suggestion.full), &suggestion.full),
         capped: otd::corners(center(&suggestion.capped), &suggestion.capped),
     })
-    .width(PREVIEW_SIZE.0)
-    .height(PREVIEW_SIZE.1);
-    let mut legend = "Thin: current area. Solid: capped step. Dashed: full fit.".to_string();
+    .width(Fill)
+    .height(PREVIEW_HEIGHT);
+    let legend = row![
+        legend_entry(style::swatch(style::MUTED), "Now"),
+        legend_entry(style::swatch(style::PINK), "Capped step"),
+        legend_entry(style::dashed_swatch(style::PINK), "Full fit"),
+    ]
+    .spacing(20);
+    let mut preview_panel = column![preview, legend].spacing(16);
     if tablet_size.is_none() {
-        legend.push_str(" Enter the tablet size in Setup to see the tablet.");
+        preview_panel = preview_panel.push(style::muted(
+            "Enter the tablet's size in Setup to see the tablet around the areas.",
+        ));
     }
 
     let current = (profile.mapping, profile.center);
     let capped = (suggestion.capped, center(&suggestion.capped));
     let full = (suggestion.full, center(&suggestion.full));
     let table = column![
-        table_row("", "Current", "Capped step", "Full fit"),
+        table_row("", "Now", "Capped step", "Full fit", true),
+        style::divider(),
         table_row(
             "Width",
             &millimeters(current.0.area_width, None),
             &millimeters(capped.0.area_width, Some(current.0.area_width)),
             &millimeters(full.0.area_width, Some(current.0.area_width)),
+            false,
         ),
         table_row(
             "Height",
             &millimeters(current.0.area_height, None),
             &millimeters(capped.0.area_height, Some(current.0.area_height)),
             &millimeters(full.0.area_height, Some(current.0.area_height)),
+            false,
         ),
         table_row(
             "Rotation",
             &format!("{:.2}°", current.0.rotation),
             &format!("{:.2}°", capped.0.rotation),
             &format!("{:.2}°", full.0.rotation),
+            false,
         ),
         table_row(
             "Center",
             &position(current.1),
             &position(capped.1),
             &position(full.1),
+            false,
         ),
     ]
-    .spacing(6);
+    .spacing(10);
 
     let kept: Vec<&str> = [
         ("size", suggestion.size.contains(1.0)),
@@ -127,45 +142,82 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     .into_iter()
     .filter_map(|(name, kept)| kept.then_some(name))
     .collect();
-    let mut notes = column![].spacing(6);
+    let mut notes = column![].spacing(8);
     if !kept.is_empty() {
-        notes = notes.push(text(format!(
+        notes = notes.push(style::muted(format!(
             "Kept, because the analysis shows no clear effect: {}.",
             kept.join(", ")
         )));
     }
     let settings = app.config.fit;
-    notes = notes.push(text(format!(
+    notes = notes.push(style::muted(format!(
         "The capped step changes the size by at most {}% and the rotation by at most {}°. \
          Play a few sessions with it, then analyze again.",
         settings.max_size_step * 100.0,
         settings.max_rotation_step_deg
     )));
 
-    let actions: Element<'_, app::Message> = if suggestion.full == profile.mapping {
-        text("Your area fits your aim: nothing to change.").into()
+    let nothing_to_change = suggestion.full == profile.mapping;
+    let actions: Element<'_, app::Message> = if nothing_to_change {
+        row![].into()
     } else {
         row![
-            button("Export capped step")
+            style::secondary("Export full fit")
+                .on_press(app::Message::Area(Message::Export(Step::Full))),
+            style::primary("Export capped step")
                 .on_press(app::Message::Area(Message::Export(Step::Capped))),
-            button("Export full fit").on_press(app::Message::Area(Message::Export(Step::Full))),
         ]
-        .spacing(12)
+        .spacing(8)
         .into()
     };
-    let mut details = column![table, notes, actions].spacing(20);
-    if let Some(exported) = &app.area.exported {
-        details = details.push(text(exported));
-    }
 
-    row![
-        column![preview, text(legend).size(14)]
-            .spacing(8)
-            .width(PREVIEW_SIZE.0),
-        details
-    ]
-    .spacing(32)
-    .into()
+    let mut content = column![].spacing(16);
+    if nothing_to_change {
+        content = content.push(style::banner(
+            style::GREAT,
+            text("Your area fits your aim: nothing to change."),
+        ));
+    }
+    let elsewhere = app.analysis.last.as_ref().map_or(0, |analysis| {
+        app.history.from_other_areas(&analysis.report.measured)
+    });
+    if elsewhere > 0 {
+        content = content.push(style::banner(
+            style::MEH,
+            text(format!(
+                "{elsewhere} of the analyzed replays were played with an older area. The \
+                 suggestion corrects your current area, so filter the Replays page to it and \
+                 analyze again."
+            )),
+        ));
+    }
+    if let Some(exported) = &app.area.exported {
+        let (tone, message) = match exported {
+            Ok(message) => (style::OK, message),
+            Err(message) => (style::MISS, message),
+        };
+        content = content.push(style::banner(tone, text(message.as_str())));
+    }
+    content = content.push(
+        row![
+            style::panel(preview_panel).width(FillPortion(5)),
+            column![style::panel(table), notes]
+                .spacing(16)
+                .width(FillPortion(6)),
+        ]
+        .spacing(16),
+    );
+    style::scroll(style::page("Area", ABOUT, actions, content)).into()
+}
+
+fn legend_entry<'a>(
+    swatch: Element<'a, app::Message>,
+    label: &'a str,
+) -> Element<'a, app::Message> {
+    row![swatch, style::muted(label)]
+        .spacing(8)
+        .align_y(Center)
+        .into()
 }
 
 fn proposal(app: &App) -> Result<Proposal<'_>, &'static str> {
@@ -203,13 +255,23 @@ fn table_row<'a>(
     current: &str,
     capped: &str,
     full: &str,
+    header: bool,
 ) -> Element<'a, app::Message> {
+    let cell = |value: &str| {
+        let cell = text(value.to_string()).size(14).width(Fill);
+        if header {
+            cell.font(style::SEMIBOLD).color(style::MUTED).size(13)
+        } else {
+            cell
+        }
+    };
     row![
-        text(label).width(80),
-        text(current.to_string()).width(COLUMN_WIDTH),
-        text(capped.to_string()).width(COLUMN_WIDTH),
-        text(full.to_string()).width(COLUMN_WIDTH),
+        style::muted(label).width(70),
+        cell(current),
+        cell(capped),
+        cell(full),
     ]
+    .spacing(12)
     .into()
 }
 

@@ -1,6 +1,7 @@
 pub mod aim;
 pub mod config;
 pub mod fit;
+pub mod history;
 pub mod hits;
 pub mod library;
 pub mod listing;

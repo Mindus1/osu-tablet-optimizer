@@ -10,6 +10,9 @@ fn main() -> iced::Result {
         .title("osu! Tablet Optimizer")
         .theme(App::theme)
         .subscription(App::subscription)
-        .window_size((1200.0, 800.0))
+        .font(include_bytes!("../assets/fonts/Exo2-Regular.ttf").as_slice())
+        .font(include_bytes!("../assets/fonts/Exo2-SemiBold.ttf").as_slice())
+        .default_font(ui::style::REGULAR)
+        .window_size((1280.0, 760.0))
         .run()
 }
