@@ -9,6 +9,7 @@ Design spec: `docs/superpowers/specs/2026-10-09-osu-tablet-optimizer-design.md`
 ```sh
 cargo run
 cargo test                                  # real-replay tests skip without tests/fixtures/
+cargo test -- --ignored                     # real osu!/OTD installs on this machine; OTD_DATA_DIR=<folder> for portable OTD
 cargo clippy --all-targets -- -D warnings
 cargo fmt
 cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablets.tsv
@@ -16,8 +17,10 @@ cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablet
 
 ## Architecture
 
+- `src/lib.rs` exposes `core` as a library; `src/main.rs` is the iced binary on top of it.
 - `src/core/`: pure logic, no iced. Replay parsing, beatmap index, hit extraction, aim fit, OTD settings, tablet table, persistence. Tests live here.
-- `src/ui/`: iced pages and canvas charts. Thin: calls core, renders results.
+- `src/app.rs`: app state, page routing, background work (scan) via `Task::run` + `iced::stream::channel` from a worker thread.
+- `src/ui/<page>.rs`: `view(&App)` and `update(&mut App, Message)` per page. Thin: calls core, renders results.
 - Flow: .osr + .osu → `hits` → `fit` → `otd` (area suggestion) → preset export.
 - Units: osu!pixels (512×384) for replays and beatmaps, mm for the tablet area. Convert only in `fit`/`otd`.
 
@@ -53,5 +56,5 @@ Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `
 2. Propose the bump with a one-line reason and wait for confirmation: patch = fixes only, minor = new features, major = milestone/breaking.
 3. On `dev`: bump `version` in Cargo.toml, update README if needed, commit `chore: release vX.Y.Z`.
 4. `gh pr create --base main --head dev`, then `gh pr merge --merge`.
-5. Tag `vX.Y.Z` on main and push the tag. The Release workflow builds Windows/Linux/macOS and publishes the GitHub release. Confirm with `gh run watch`.
+5. On main: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z` (`-m` is required because tag signing is enabled). The workflow refuses tags whose version differs from `Cargo.toml` (pre-release suffixes like `-rc1` are allowed). The Release workflow builds Windows/Linux/macOS and publishes the GitHub release. Confirm with `gh run watch`.
 6. `git switch dev && git merge --ff-only main && git push`.

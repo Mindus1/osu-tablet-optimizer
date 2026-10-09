@@ -39,9 +39,9 @@ The author's machine is the **test environment only**, and nothing is tailored t
 For each matched hit `i`, `p` is the cursor at the previous hit, `o` the object centre and `c` the cursor at the key press:
 - intended move `u = o − p`, actual move `v = c − p`
 - **Model:** `v = B·u + k·û + ε`. `B` (2×2) is the player's effective gain: scale per axis, rotation and shear. `k` is a constant along-direction term that absorbs "stop at the circle edge" undershoot. Edge-stopping doesn't grow with jump distance, while a wrong area size does, so the two separate. 5 unknowns, solved with linear least squares (hand-written 5×5 solve).
-- **Filters:** `|u| ≥ 3r` (min distance in radii, configurable), `|c − o| ≤ 3r` (outliers), previous object is a circle (slider-end positions need slider duration; `ponytail:` comment), gap ≤ 1000 ms, objects within 3 px of a neighbour skipped (stacking).
+- **Filters:** `|u| ≥ 3r` (min distance in radii, configurable), `|c − o| ≤ 3r` (outliers), previous object is a circle (slider-end positions need slider duration; `ponytail:` comment), gap ≤ 1000 ms, objects within 3 px of any other object inside the stack window (fixed 2 s) skipped (stacking).
 - **To OTD parameters:** the current tablet→playfield linear map is `M = diag(Dw/w, Dh/h)·R(−θ)` (constant factor cancels). The corrected map is `M' = B⁻¹·M`. New `w' = w·|row_x(M)|/|row_x(M')|`, same for `h'`, and `θ'` comes from the row directions. Shear can't be expressed in OTD, so it's reported only. **OTD's rotation sign convention gets verified against the OTD 0.6.x source and pinned by a test.**
-- **Confidence:** 200 bootstrap resamples over hits give 90% CIs (`ponytail:` hit-level bootstrap, cluster by replay if CIs look too tight). A parameter whose CI covers "no change" is shown as *keep*.
+- **Confidence:** 200 bootstrap rounds over **replays** give 90% intervals; a suggestion needs ≥ 5 replays and ≥ 50 usable samples. Hit-level intervals were measured too narrow (even/odd replay halves disagreed beyond them), because aim varies between sessions. A parameter whose interval covers "no change" is shown as *keep*.
 - **Capped suggestion:** clamp `|w'/w − 1|`, `|h'/h − 1|` ≤ 3% and `|θ' − θ|` ≤ 2° (configurable).
 - **Mods:** HR flips Y and scales CS/OD; EZ scales CS/OD. Lazer extras come from the .osr trailer JSON (MR axis flip, DA CS/OD). Replays with any mod outside a whitelist of visual/timing-only mods are skipped with a reason (AP, RX, lazer Wiggle/Transform/Magnetised/Barrel Roll, …). Radius `r = 54.4 − 4.48·CS`. Hit window `±(200 − 10·OD)` ms.
 - **Presses:** rising edge of key A (K1|M1) or key B (K2|M2). Each object takes the first unused press inside its window.
@@ -54,7 +54,7 @@ Single crate. `core/` is pure logic with no iced dependency and is where all tes
 src/main.rs            iced bootstrap
 src/app.rs             State, Message, update, sidebar routing
 src/core/replay.rs     .osr: header-only read (fast listing) + LZMA frames + lazer trailer mods
-src/core/beatmap.rs    scan stable Songs + lazer files store → index (md5, path, title); load via rosu-map
+src/core/library.rs    find stable/lazer installs, index beatmaps (md5, path, title) + replay headers, JSON cache
 src/core/hits.rs       mods, press↔object matching, samples (u, v, r)
 src/core/fit.rs        regression, OTD-parameter decomposition, bootstrap, caps
 src/core/otd.rs        locate OTD data dir, profiles, read area, write preset (keep centre + clamp)
@@ -74,8 +74,8 @@ examples/update_tablets.rs   regenerates src/core/tablets.tsv from an OTD checko
 - OTD: `<platform data dir>/OpenTabletDriver` (`%LOCALAPPDATA%`, `$XDG_CONFIG_HOME` or `~/.config`, `~/Library/Application Support`). For portable installs, the user picks the OTD folder once, and the app accepts either the exe folder (uses `userdata/`) or the data folder itself.
 - stable: `%LOCALAPPDATA%/osu!` → `Songs/`, `Data/r/`, `Replays/` (on Linux/macOS through Wine, picked by hand).
 - lazer: `%APPDATA%/osu`, `~/.local/share/osu` or `~/Library/Application Support/osu`, honouring the `storage.ini` custom-location override → `files/`, `exports/`.
-- One scan pass over the lazer store sorts files by signature, reading only the first 64 bytes of each: `.osu` starts with `osu file format v`, `.osr` starts with mode byte 0 + plausible version + `0x0b 0x20` + 32 hex chars. Stores can be huge (test machine: 121k files, 58 GB), so the scan is **incremental by directory mtime** and runs in the background with progress.
-- Persistence lives in `dirs::data_dir()/osu-tablet-optimizer/`: `config.json`, `history.json`, `index.tsv` (`kind \t md5 \t path \t title \t player`).
+- One scan walks every root and keeps `.osu`, `.osr` and extension-less files (lazer's store). It reuses cache entries whose modified time and size are unchanged, and classifies the rest by content: `osu file format v`, or a `.osr` header signature (mode byte 0–3, plausible version, `0x0b 0x20` + 32-char MD5). Changed files are read in parallel. On the test machine: 171k candidates, 25 s first scan, 1.5 s rescan.
+- Persistence lives in `dirs::data_dir()/osu-tablet-optimizer/`: `config.json`, `history.json`, `library.json` (file cache: path → modified, size, beatmap md5 + title or replay header).
 
 **OTD preset export:** parse the settings as `serde_json::Value`, change only the selected profile's `AbsoluteModeSettings.Tablet.{Width,Height,X,Y,Rotation}` (plus `LockAspectRatio=false` if the aspect changes), and write `Presets/oto-YYYY-MM-DD-{capped|full}.json`. Unknown fields are preserved.
 
@@ -91,13 +91,13 @@ examples/update_tablets.rs   regenerates src/core/tablets.tsv from an OTD checko
 
 ## Roadmap (one feature branch → PR to `dev` each; each starts with a `writing-plans` plan for just that feature)
 
-1. `feature/app-shell`: Cargo project, sidebar + empty pages, `config.rs`, CI + release workflows, README skeleton
+1. `feature/app-shell`: Cargo project, sidebar + empty pages, CI + release workflows, README build section
 2. `feature/replay-parser`: `replay.rs` + tests
-3. `feature/beatmap-index`: `beatmap.rs` (stable + lazer, incremental, replay discovery, player auto-detect)
+3. `feature/beatmap-index`: `library.rs` (stable + lazer, incremental, replay discovery, player auto-detect)
 4. `feature/hit-extraction`: `hits.rs` (mods, matching, filters)
 5. `feature/aim-fit`: `fit.rs` (synthetic recovery tests)
 6. `feature/otd-settings`: `otd.rs` + `tablets.rs` + `update_tablets` example (discovery, profiles, preset write, rotation convention test)
-7. `feature/replays-page`: Replays + Setup pages
+7. `feature/replays-page`: Replays + Setup pages, `config.rs` (its first consumer)
 8. `feature/analysis-page`: scatter + polar + metrics
 9. `feature/area-page`: area preview + export, the **suggested first release (0.1.0)**
 10. `feature/history`: snapshots, tagging, History page
