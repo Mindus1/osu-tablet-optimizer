@@ -1,9 +1,12 @@
 use anyhow::{Result, ensure};
 use rosu_map::Beatmap;
 use rosu_map::section::hit_objects::HitObjectKind;
+use serde_json::Value;
 
-use crate::core::replay::{Frame, Replay};
+use crate::core::replay::{Frame, Mod, Replay};
 
+const PLAYFIELD_WIDTH: f64 = 512.0;
+const PLAYFIELD_HEIGHT: f64 = 384.0;
 // osu! plays beatmaps older than format v5 24 ms late, so replay time runs 24 ms behind them.
 const EARLY_VERSION_TIMING_OFFSET: f64 = 24.0;
 const KEY_A: u32 = 1 | 4;
@@ -11,6 +14,11 @@ const KEY_B: u32 = 2 | 8;
 // ponytail: fixed structural limits; make them settings if users need to tune them.
 const MAX_GAP_MS: f64 = 1000.0;
 const STACK_DISTANCE: f64 = 3.0;
+// Mods that leave object positions alone, plus the ones applied below (HR, EZ, MR, DA).
+const SUPPORTED_MODS: [&str; 31] = [
+    "NF", "EZ", "HD", "HR", "SD", "PF", "DT", "NC", "HT", "DC", "FL", "SO", "SV2", "CL", "MU",
+    "BL", "NS", "TC", "AC", "ST", "SG", "AL", "GR", "DF", "AD", "SY", "BU", "SI", "FR", "MR", "DA",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sample {
@@ -37,10 +45,18 @@ struct Target {
     stacked: bool,
 }
 
+struct Difficulty {
+    circle_size: f64,
+    overall_difficulty: f64,
+    flip_x: bool,
+    flip_y: bool,
+}
+
 pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
     ensure!(replay.header.mode == 0, "not an osu!standard replay");
-    let radius = 54.4 - 4.48 * f64::from(beatmap.circle_size);
-    let window = (200.0 - 10.0 * f64::from(beatmap.overall_difficulty)).floor() - 0.5;
+    let difficulty = difficulty(beatmap, &replay.mods)?;
+    let radius = 54.4 - 4.48 * difficulty.circle_size;
+    let window = (200.0 - 10.0 * difficulty.overall_difficulty).floor() - 0.5;
     let offset = if beatmap.format_version < 5 {
         EARLY_VERSION_TIMING_OFFSET
     } else {
@@ -51,7 +67,7 @@ pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
     let mut next_press = 0;
     let mut previous: Option<(Target, Press)> = None;
     let mut samples = Vec::new();
-    for target in targets(beatmap) {
+    for target in targets(beatmap, &difficulty) {
         let Some(target) = target else {
             previous = None;
             continue;
@@ -71,6 +87,70 @@ pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
         previous = hit.map(|press| (target, press));
     }
     Ok(samples)
+}
+
+fn difficulty(beatmap: &Beatmap, mods: &[Mod]) -> Result<Difficulty> {
+    let unsupported: Vec<&str> = mods
+        .iter()
+        .map(|m| m.acronym.as_str())
+        .filter(|acronym| !SUPPORTED_MODS.contains(acronym))
+        .collect();
+    ensure!(
+        unsupported.is_empty(),
+        "unsupported mods: {}",
+        unsupported.join(", ")
+    );
+
+    let mut difficulty = Difficulty {
+        circle_size: f64::from(beatmap.circle_size),
+        overall_difficulty: f64::from(beatmap.overall_difficulty),
+        flip_x: false,
+        flip_y: false,
+    };
+    for m in mods {
+        match m.acronym.as_str() {
+            "HR" => {
+                difficulty.circle_size = (difficulty.circle_size * 1.3).min(10.0);
+                difficulty.overall_difficulty = (difficulty.overall_difficulty * 1.4).min(10.0);
+                difficulty.flip_y = !difficulty.flip_y;
+            }
+            "EZ" => {
+                difficulty.circle_size *= 0.5;
+                difficulty.overall_difficulty *= 0.5;
+            }
+            "DA" => {
+                let setting = |key| m.settings.get(key).and_then(Value::as_f64);
+                if let Some(cs) = setting("circle_size") {
+                    difficulty.circle_size = cs;
+                }
+                if let Some(od) = setting("overall_difficulty") {
+                    difficulty.overall_difficulty = od;
+                }
+            }
+            "MR" => {
+                let (x, y) = mirror_axes(m);
+                difficulty.flip_x ^= x;
+                difficulty.flip_y ^= y;
+            }
+            _ => {}
+        }
+    }
+    Ok(difficulty)
+}
+
+// lazer stores Mirror's axis as MirrorType: 0 = horizontal (the default), 1 = vertical, 2 = both.
+fn mirror_axes(m: &Mod) -> (bool, bool) {
+    let reflection = match m.settings.get("reflection") {
+        Some(Value::Number(n)) => n.as_u64(),
+        Some(Value::String(s)) => match s.as_str() {
+            "Vertical" => Some(1),
+            "Both" => Some(2),
+            other => other.parse().ok(),
+        },
+        _ => None,
+    }
+    .unwrap_or(0);
+    (reflection != 1, reflection != 0)
 }
 
 fn presses(frames: &[Frame], offset: f64) -> Vec<Press> {
@@ -93,7 +173,7 @@ fn presses(frames: &[Frame], offset: f64) -> Vec<Press> {
 }
 
 // Spinners become None: they are not aim targets and break the chain of hits.
-fn targets(beatmap: &Beatmap) -> Vec<Option<Target>> {
+fn targets(beatmap: &Beatmap, difficulty: &Difficulty) -> Vec<Option<Target>> {
     let mut targets: Vec<Option<Target>> = beatmap
         .hit_objects
         .iter()
@@ -103,10 +183,20 @@ fn targets(beatmap: &Beatmap) -> Vec<Option<Target>> {
                 HitObjectKind::Slider(slider) => (slider.pos, false),
                 _ => return None,
             };
+            let x = f64::from(pos.x);
+            let y = f64::from(pos.y);
             Some(Target {
                 time: object.start_time,
-                x: f64::from(pos.x),
-                y: f64::from(pos.y),
+                x: if difficulty.flip_x {
+                    PLAYFIELD_WIDTH - x
+                } else {
+                    x
+                },
+                y: if difficulty.flip_y {
+                    PLAYFIELD_HEIGHT - y
+                } else {
+                    y
+                },
                 is_circle,
                 stacked: false,
             })
@@ -143,8 +233,10 @@ fn take_press(presses: &[Press], next: &mut usize, time: f64, window: f64) -> Op
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Map;
+
     use super::*;
-    use crate::core::replay::{Header, Mod};
+    use crate::core::replay::Header;
 
     fn beatmap(
         format: u32,
@@ -157,6 +249,15 @@ mod tests {
             objects.join("\n")
         );
         Beatmap::from_bytes(text.as_bytes()).unwrap()
+    }
+
+    fn with_mods(mods: &[&str]) -> Vec<Mod> {
+        mods.iter()
+            .map(|acronym| Mod {
+                acronym: acronym.to_string(),
+                settings: Map::new(),
+            })
+            .collect()
     }
 
     // Each tap presses key A at (time, x, y) and releases it 30 ms later.
@@ -372,5 +473,53 @@ mod tests {
         let replay = replay(vec![], &[(1000, 100.0, 100.0)]);
 
         assert!(samples(&replay, &map).unwrap().is_empty());
+    }
+
+    #[test]
+    fn hard_rock_flips_objects_vertically() {
+        let map = beatmap(14, 4.0, 8.0, &JUMP);
+        let replay = replay(
+            with_mods(&["HR"]),
+            &[(1000, 100.0, 284.0), (1500, 400.0, 284.0)],
+        );
+
+        assert_eq!(samples(&replay, &map).unwrap()[0].intended, (300.0, 0.0));
+    }
+
+    #[test]
+    fn mirror_reflection_accepts_numbers_and_names() {
+        let mirror = |reflection: Value| Mod {
+            acronym: "MR".to_string(),
+            settings: Map::from_iter([("reflection".to_string(), reflection)]),
+        };
+
+        assert_eq!(mirror_axes(&with_mods(&["MR"])[0]), (true, false));
+        assert_eq!(mirror_axes(&mirror(Value::from(1))), (false, true));
+        assert_eq!(mirror_axes(&mirror(Value::from("2"))), (true, true));
+        assert_eq!(mirror_axes(&mirror(Value::from("Vertical"))), (false, true));
+    }
+
+    #[test]
+    fn mods_change_circle_size() {
+        let map = beatmap(14, 4.0, 8.0, &JUMP);
+        let difficulty_adjust = Mod {
+            acronym: "DA".to_string(),
+            settings: Map::from_iter([("circle_size".to_string(), Value::from(7.5))]),
+        };
+        let circle_size = |mods: Vec<Mod>| difficulty(&map, &mods).unwrap().circle_size;
+
+        assert_eq!(circle_size(with_mods(&["HR"])), 5.2);
+        assert_eq!(circle_size(with_mods(&["EZ"])), 2.0);
+        assert_eq!(circle_size(vec![difficulty_adjust]), 7.5);
+    }
+
+    #[test]
+    fn unsupported_mods_are_rejected() {
+        let map = beatmap(14, 4.0, 8.0, &JUMP);
+        let replay = replay(with_mods(&["HD", "AP", "bit15"]), &[]);
+
+        let error = samples(&replay, &map).unwrap_err().to_string();
+
+        assert_eq!(error, "unsupported mods: AP, bit15");
     }
 }
