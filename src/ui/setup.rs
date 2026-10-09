@@ -1,12 +1,16 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, pick_list, row, scrollable, text, text_input};
-use iced::{Center, Element, Task};
+use iced::widget::{column, pick_list, row, text, text_input};
+use iced::{Center, Element, Fill, Task};
 use osu_tablet_optimizer::core::config::Config;
 use osu_tablet_optimizer::core::{library, otd, tablets};
 
 use crate::app::{self, App};
+use crate::ui::style;
+
+const MAX_WIDTH: f32 = 760.0;
+const LABEL_WIDTH: f32 = 320.0;
 
 pub const RELATIVE_MODE: &str =
     "This profile is not in absolute mode; area suggestions need absolute mode.";
@@ -189,42 +193,61 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
     let osu_roots = column(app.config.osu_roots().into_iter().map(|root| {
-        let status = if root.is_dir() { "" } else { "  (not found)" };
-        text(format!("{}{status}", root.display())).into()
-    }))
-    .spacing(4);
-    let osu = column![
-        heading("osu! folders"),
-        osu_roots,
+        let found = root.is_dir();
         row![
-            button("Add folder…").on_press(app::Message::Setup(Message::AddOsuFolder)),
-            button("Detect").on_press(app::Message::Setup(Message::DetectOsuFolders)),
-            button("Rescan").on_press_maybe(app.scanning.is_none().then_some(app::Message::Rescan)),
+            style::dot(if found { style::OK } else { style::MISS }, 8.0),
+            text(root.display().to_string()).size(14),
+            (!found).then(|| text("not found").size(13).color(style::MISS)),
         ]
-        .spacing(8),
-    ]
+        .spacing(10)
+        .align_y(Center)
+        .into()
+    }))
     .spacing(8);
+    let osu = section(
+        "osu! folders",
+        "Where your replays and beatmaps are. stable and lazer are found on their own.",
+        column![
+            osu_roots,
+            row![
+                style::secondary("Add folder…")
+                    .on_press(app::Message::Setup(Message::AddOsuFolder)),
+                style::secondary("Detect again")
+                    .on_press(app::Message::Setup(Message::DetectOsuFolders)),
+                style::secondary("Rescan")
+                    .on_press_maybe(app.scanning.is_none().then_some(app::Message::Rescan)),
+            ]
+            .spacing(8),
+        ]
+        .spacing(14),
+    );
 
-    let players = column![
-        heading("Players"),
-        text("Only these players' replays are listed (comma-separated; empty lists everyone).")
-            .size(14),
+    let players = section(
+        "Players",
+        "Only these players' replays are listed. Separate names with commas; leave it empty to \
+         list everyone.",
         row![
-            text_input("player names", &app.setup.players)
+            text_input("Player names", &app.setup.players)
                 .on_input(|players| app::Message::Setup(Message::Players(players)))
-                .width(320),
-            button("Detect").on_press(app::Message::Setup(Message::DetectPlayer)),
+                .padding([8, 12])
+                .width(320)
+                .style(style::input),
+            style::secondary("Detect").on_press(app::Message::Setup(Message::DetectPlayer)),
         ]
         .spacing(8)
         .align_y(Center),
-    ]
-    .spacing(8);
+    );
 
-    let analysis = column![heading("Analysis")]
-        .extend(Number::ANALYSIS.map(|number| number_input(app, number)))
-        .spacing(8);
+    let analysis = section(
+        "Analysis",
+        "Which jumps count, and how far one suggested step may move your area.",
+        column(Number::ANALYSIS.map(|number| number_input(app, number))).spacing(10),
+    );
 
-    scrollable(
+    style::scroll(style::page(
+        "Setup",
+        "Where your replays and tablet settings live, and how the analysis treats them.",
+        row![],
         column![
             osu,
             otd_section(app),
@@ -232,35 +255,38 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             players,
             analysis
         ]
-        .spacing(24)
-        .padding([0, 16]),
-    )
+        .spacing(16)
+        .max_width(MAX_WIDTH),
+    ))
     .into()
 }
 
 fn otd_section(app: &App) -> Element<'_, app::Message> {
     let folder = match app.config.otd_dir() {
-        Some(dir) => text(dir.display().to_string()),
-        None => text("Not found"),
+        Some(dir) => text(dir.display().to_string()).size(14),
+        None => text("Not found").size(14).color(style::MISS),
     };
-    let mut section = column![
-        heading("OpenTabletDriver"),
+    let mut content = column![
         row![
-            folder,
-            button("Choose folder…").on_press(app::Message::Setup(Message::ChooseOtdFolder)),
+            folder.width(Fill),
+            style::secondary("Choose folder…")
+                .on_press(app::Message::Setup(Message::ChooseOtdFolder)),
         ]
-        .spacing(8)
+        .spacing(12)
         .align_y(Center),
     ]
-    .spacing(8);
+    .spacing(12);
     match &app.otd {
-        Err(error) => section = section.push(text(error.clone())),
+        Err(error) => content = content.push(style::banner(style::MISS, text(error.clone()))),
         Ok(settings) => {
             if !settings.is_supported() {
-                section = section.push(text(format!(
-                    "OpenTabletDriver {} is untested; this app reads the 0.6 settings format.",
-                    settings.revision
-                )));
+                content = content.push(style::banner(
+                    style::MEH,
+                    text(format!(
+                        "OpenTabletDriver {} is untested; this app reads the 0.6 settings format.",
+                        settings.revision
+                    )),
+                ));
             }
             let profiles: Vec<Profile> = settings
                 .profiles
@@ -272,49 +298,85 @@ fn otd_section(app: &App) -> Element<'_, app::Message> {
                 })
                 .collect();
             let selected = profiles.get(app.config.profile).cloned();
-            section = section.push(pick_list(profiles, selected, |profile| {
-                app::Message::Setup(Message::Profile(profile))
-            }));
+            content = content.push(
+                row![
+                    text("Profile").size(14).width(LABEL_WIDTH),
+                    pick_list(profiles, selected, |profile| {
+                        app::Message::Setup(Message::Profile(profile))
+                    })
+                    .padding([8, 12])
+                    .style(style::select),
+                ]
+                .spacing(12)
+                .align_y(Center),
+            );
             if profile(app).is_some_and(|profile| !profile.absolute) {
-                section = section.push(text(RELATIVE_MODE));
+                content = content.push(style::banner(style::MEH, text(RELATIVE_MODE)));
             }
         }
     }
-    section.into()
+    section(
+        "OpenTabletDriver",
+        "Its settings are only read. For a portable install, choose its program folder.",
+        content,
+    )
 }
 
 fn tablet_section(app: &App) -> Element<'_, app::Message> {
     let tablet = profile(app).map(|profile| profile.tablet.as_str());
-    let line = match (
+    let source = match (
         tablet,
         app.config.tablet_size,
         tablet.and_then(tablets::tablet_size),
     ) {
-        (_, Some(_), _) => format!("{} — size entered by you.", tablet.unwrap_or("Tablet")),
-        (Some(name), None, Some((width, height))) => {
-            format!("{name} — {width} × {height} mm, from OpenTabletDriver's tablet list.")
+        (_, Some(_), _) => "Size entered by you.".to_string(),
+        (Some(_), None, Some((width, height))) => {
+            format!("{width} × {height} mm, from OpenTabletDriver's tablet list.")
         }
-        (Some(name), None, None) => {
-            format!("{name} — not in OpenTabletDriver's tablet list; enter its active area.")
+        (Some(_), None, None) => {
+            "Not in OpenTabletDriver's tablet list; enter its active area below.".to_string()
         }
         (None, None, _) => {
             "No OpenTabletDriver profile yet; choose its folder above or enter the tablet's size."
                 .to_string()
         }
     };
-    column![
-        heading("Tablet"),
-        text(line),
-        number_input(app, Number::TabletWidth),
-        number_input(app, Number::TabletHeight),
-        button("Use OpenTabletDriver's size").on_press_maybe(
-            app.config
-                .tablet_size
-                .is_some()
-                .then_some(app::Message::Setup(Message::UseTableSize))
-        ),
-    ]
-    .spacing(8)
+    section(
+        "Tablet",
+        "The active area's size keeps exported areas on the tablet.",
+        column![
+            column![
+                text(tablet.unwrap_or("Tablet"))
+                    .size(15)
+                    .font(style::SEMIBOLD),
+                style::muted(source),
+            ]
+            .spacing(2),
+            number_input(app, Number::TabletWidth),
+            number_input(app, Number::TabletHeight),
+            style::secondary("Use OpenTabletDriver's size").on_press_maybe(
+                app.config
+                    .tablet_size
+                    .is_some()
+                    .then_some(app::Message::Setup(Message::UseTableSize))
+            ),
+        ]
+        .spacing(10),
+    )
+}
+
+fn section<'a>(
+    title: &'a str,
+    about: &'a str,
+    content: impl Into<Element<'a, app::Message>>,
+) -> Element<'a, app::Message> {
+    style::panel(
+        column![
+            column![style::heading(title), style::muted(about)].spacing(4),
+            content.into()
+        ]
+        .spacing(16),
+    )
     .into()
 }
 
@@ -327,18 +389,16 @@ fn number_input(app: &App, number: Number) -> Element<'_, app::Message> {
     }
     .unwrap_or_default();
     row![
-        text(number.label()).width(320),
+        text(number.label()).size(14).width(LABEL_WIDTH),
         text_input(&placeholder, app.setup.text(number))
             .on_input(move |value| app::Message::Setup(Message::Number(number, value)))
-            .width(120),
+            .padding([6, 10])
+            .width(120)
+            .style(style::input),
     ]
-    .spacing(8)
+    .spacing(12)
     .align_y(Center)
     .into()
-}
-
-fn heading(label: &str) -> Element<'_, app::Message> {
-    text(label).size(20).into()
 }
 
 pub fn profile(app: &App) -> Option<&otd::Profile> {

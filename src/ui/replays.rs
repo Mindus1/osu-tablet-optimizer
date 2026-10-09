@@ -3,21 +3,23 @@ use std::fmt;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local, Utc};
-use iced::widget::{
-    button, checkbox, column, pick_list, progress_bar, row, scrollable, space, text, text_input,
-};
-use iced::{Center, Element, Fill, Task};
+use iced::widget::{checkbox, column, container, pick_list, row, space, text, text_input};
+use iced::{Center, Color, Element, Fill, Right, Task};
 use osu_tablet_optimizer::core::config::Config;
 use osu_tablet_optimizer::core::history::History;
 use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::listing::{self, Period, Row};
 
 use crate::app::{self, App, Page};
-use crate::ui::{analysis, history};
+use crate::ui::{analysis, history, style};
 
 // ponytail: a plain column of rows; switch to a virtualized list if 500 rows feel slow.
 const MAX_ROWS: usize = 500;
-const AREA_WIDTH: f32 = 160.0;
+const PLAYED_WIDTH: f32 = 130.0;
+const PLAYER_WIDTH: f32 = 130.0;
+const AREA_WIDTH: f32 = 170.0;
+const MODS_WIDTH: f32 = 70.0;
+const ACCURACY_WIDTH: f32 = 76.0;
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -138,38 +140,70 @@ pub fn add_files(app: &mut App, paths: Vec<PathBuf>) {
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
     let state = &app.replays;
-    let analyze = button(text(format!("Analyze {} selected", state.selected.len())))
-        .on_press_maybe(
-            (!state.selected.is_empty()).then_some(app::Message::Replays(Message::Analyze)),
-        );
-    let toolbar = row![
+    let actions = row![
+        style::secondary("Add files…").on_press(app::Message::Replays(Message::AddFiles)),
+        style::primary(format!("Analyze {} selected", state.selected.len())).on_press_maybe(
+            (!state.selected.is_empty()).then_some(app::Message::Replays(Message::Analyze))
+        ),
+    ]
+    .spacing(8);
+    let filters = row![
         pick_list(Period::ALL, Some(state.period), |period| {
             app::Message::Replays(Message::Period(period))
-        }),
+        })
+        .padding([8, 12])
+        .style(style::select),
         area_filter(app),
         text_input("Search maps", &state.search)
             .on_input(|search| app::Message::Replays(Message::Search(search)))
-            .width(200),
-        button("Add files…").on_press(app::Message::Replays(Message::AddFiles)),
-        scan_status(app),
-        space::horizontal(),
-        analyze,
+            .padding([8, 12])
+            .width(280)
+            .style(style::input),
     ]
     .spacing(8)
     .align_y(Center);
 
-    let all_selected = state.shown().next().is_some()
-        && state.shown().all(|row| state.selected.contains(&row.path));
+    column![
+        style::page(
+            "Replays",
+            "Pick the plays to analyze, newest first.",
+            actions,
+            filters
+        ),
+        table(app),
+    ]
+    .spacing(16)
+    .into()
+}
+
+fn table(app: &App) -> Element<'_, app::Message> {
+    let state = &app.replays;
+    let total = state.added.len() + state.rows.len();
+    if total == 0 {
+        let hint = if app.scanning.is_some() {
+            "Your osu! folders are being scanned; replays show up here when it finishes."
+        } else {
+            "No replays match. Try another period or area, or check the players and osu! \
+             folders in Setup."
+        };
+        return style::panel(style::muted(hint)).into();
+    }
+
+    let all_selected = state.shown().all(|row| state.selected.contains(&row.path));
     let header = row![
         checkbox(all_selected).on_toggle(|on| app::Message::Replays(Message::ToggleAll(on))),
-        text("Played").width(140),
-        text("Player").width(140),
-        text("Map").width(Fill),
-        text("Area").width(AREA_WIDTH),
-        text("Mods").width(80),
-        text("Accuracy").width(80),
+        column_label("Played").width(PLAYED_WIDTH),
+        column_label("Player").width(PLAYER_WIDTH),
+        column_label("Map").width(Fill),
+        column_label("Area").width(AREA_WIDTH),
+        column_label("Mods").width(MODS_WIDTH),
+        column_label("Accuracy")
+            .width(ACCURACY_WIDTH)
+            .align_x(Right),
     ]
-    .spacing(12);
+    .spacing(16)
+    .align_y(Center)
+    .padding([12, 20]);
     let rows = column(state.shown().map(|row| {
         let area = app.history.snapshot_of(&row.path, row.played_at_ms);
         row_view(
@@ -177,15 +211,12 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             history::area_label(&app.history, area),
             state.selected.contains(&row.path),
         )
-    }))
-    .spacing(4);
-    let total = state.added.len() + state.rows.len();
-    let footer = if total > MAX_ROWS {
-        format!("Showing {MAX_ROWS} of {total} replays")
+    }));
+    let count = if total > MAX_ROWS {
+        format!("Showing the newest {MAX_ROWS} of {total} replays.")
     } else {
-        format!("{total} replays · drop .osr files anywhere to add them")
+        format!("{total} replays. Drop .osr files anywhere to add more.")
     };
-
     let assign = (!state.selected.is_empty() && !app.history.snapshots.is_empty()).then(|| {
         pick_list(
             area_choices(&app.history, "By date"),
@@ -193,32 +224,66 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             |choice| app::Message::Replays(Message::Assign(choice.area)),
         )
         .placeholder("Assign selected to area…")
+        .padding([8, 12])
+        .style(style::select)
     });
+    let footer = row![style::muted(count), space::horizontal(), assign]
+        .align_y(Center)
+        .padding([10, 20]);
 
-    column![
-        toolbar,
+    style::panel(column![
         header,
-        scrollable(rows).height(Fill),
-        row![text(footer).size(14), space::horizontal(), assign].align_y(Center)
-    ]
-    .spacing(12)
+        style::divider(),
+        style::scroll(rows).height(Fill),
+        style::divider(),
+        footer
+    ])
+    .padding(0)
+    .height(Fill)
     .into()
 }
 
 fn row_view(row: &Row, area: String, selected: bool) -> Element<'_, app::Message> {
     let path = row.path.clone();
-    iced::widget::row![
+    let cells = iced::widget::row![
         checkbox(selected)
             .on_toggle(move |on| app::Message::Replays(Message::Toggle(path.clone(), on))),
-        text(played_at(row.played_at_ms)).width(140),
-        text(&row.player).width(140),
-        text(&row.title).width(Fill),
-        text(area).width(AREA_WIDTH),
-        text(&row.mods).width(80),
-        text(format!("{:.2}%", row.accuracy * 100.0)).width(80),
+        text(played_at(row.played_at_ms))
+            .size(14)
+            .color(style::MUTED)
+            .width(PLAYED_WIDTH),
+        text(&row.player).size(14).width(PLAYER_WIDTH),
+        text(&row.title).size(14).width(Fill),
+        text(area).size(14).color(style::MUTED).width(AREA_WIDTH),
+        text(&row.mods).size(14).width(MODS_WIDTH),
+        text(format!("{:.2}%", row.accuracy * 100.0))
+            .size(14)
+            .width(ACCURACY_WIDTH)
+            .align_x(Right),
     ]
-    .spacing(12)
-    .into()
+    .spacing(16)
+    .align_y(Center);
+    container(cells)
+        .padding([8, 20])
+        .width(Fill)
+        .style(move |_| {
+            let tint = selected.then_some(Color {
+                a: 0.08,
+                ..style::PINK
+            });
+            container::Style {
+                background: tint.map(Into::into),
+                ..container::Style::default()
+            }
+        })
+        .into()
+}
+
+fn column_label(label: &str) -> iced::widget::Text<'_> {
+    text(label)
+        .size(13)
+        .font(style::SEMIBOLD)
+        .color(style::MUTED)
 }
 
 fn area_filter(app: &App) -> Element<'_, app::Message> {
@@ -230,6 +295,8 @@ fn area_filter(app: &App) -> Element<'_, app::Message> {
     pick_list(choices, selected, |choice| {
         app::Message::Replays(Message::Area(choice.area))
     })
+    .padding([8, 12])
+    .style(style::select)
     .into()
 }
 
@@ -244,20 +311,6 @@ fn area_choices(history: &History, none: &str) -> Vec<AreaChoice> {
     })
     .chain(areas)
     .collect()
-}
-
-fn scan_status(app: &App) -> Element<'_, app::Message> {
-    match app.scanning {
-        Some((_, 0)) => text("Scanning osu! folders…").into(),
-        Some((done, total)) => row![
-            progress_bar(0.0..=total as f32, done as f32).length(160),
-            text(format!("{done} / {total} files"))
-        ]
-        .spacing(8)
-        .align_y(Center)
-        .into(),
-        None => button("Rescan").on_press(app::Message::Rescan).into(),
-    }
 }
 
 pub fn played_at(ms: i64) -> String {

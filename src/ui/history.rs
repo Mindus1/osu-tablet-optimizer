@@ -1,15 +1,16 @@
-use iced::widget::{canvas, column, pick_list, row, scrollable, space, text, text_input};
-use iced::{Center, Element, Task};
+use iced::widget::{canvas, column, pick_list, row, space, text, text_input};
+use iced::{Center, Element, Fill, Task};
 use osu_tablet_optimizer::core::fit::Mapping;
 use osu_tablet_optimizer::core::history::{self, History, Metric, Point};
 
 use crate::app::{self, App};
-use crate::ui::{charts, replays, setup};
+use crate::ui::{charts, replays, setup, style};
 
-const CHART_SIZE: (f32, f32) = (760.0, 320.0);
-const NOTE: &str = "Each point is one analyzed replay, measured on its own: points scatter more \
-                    than the Analysis page's numbers, and stopping at a circle's edge counts as a \
-                    little undershoot. Analyze replays to add them.";
+const CHART_HEIGHT: f32 = 320.0;
+const SUMMARY_WIDTH: f32 = 200.0;
+const NOTE: &str = "Each point is one replay measured on its own, so points scatter more than the \
+                    Analysis page's numbers, and stopping at a circle's edge counts as a little \
+                    undershoot.";
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -36,13 +37,18 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
 }
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
+    const ABOUT: &str = "Whether a new area helped: every analyzed replay, colored by its area.";
     let history = &app.history;
     if history.snapshots.is_empty() {
-        return text(
-            "No tablet area logged yet. Once OpenTabletDriver's settings are found (see Setup), \
-             its area is logged here whenever it changes.",
-        )
-        .into();
+        return style::page(
+            "History",
+            ABOUT,
+            row![],
+            style::panel(style::muted(
+                "No tablet area logged yet. Once OpenTabletDriver's settings are found (see \
+                 Setup), its area is logged here whenever it changes.",
+            )),
+        );
     }
     let metric = app.history_page.metric;
     let points = history.points(metric);
@@ -51,17 +57,21 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
             .rev()
             .map(Some)
             .chain([None])
-            .filter_map(|area| area_row(history, area, &points, metric)),
+            .filter_map(|area| area_row(history, area, &points, metric))
+            .enumerate()
+            .flat_map(|(index, row)| {
+                let divider = (index > 0).then(|| style::divider().into());
+                divider.into_iter().chain([row])
+            }),
     )
-    .spacing(8);
+    .spacing(12);
     let chart: Element<'_, app::Message> = match (points.first(), points.last()) {
         (Some(first), Some(last)) => {
             let dates = row![
-                text(replays::played_at(first.played_at_ms)).size(14),
+                style::muted(replays::played_at(first.played_at_ms)),
                 space::horizontal(),
-                text(replays::played_at(last.played_at_ms)).size(14),
-            ]
-            .width(CHART_SIZE.0);
+                style::muted(replays::played_at(last.played_at_ms)),
+            ];
             let range = history::chart_range(&points, metric.ideal());
             let trend = charts::Trend {
                 top: format_value(metric, range.1),
@@ -70,33 +80,33 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
                 range,
                 ideal: metric.ideal(),
             };
-            column![
-                canvas(trend).width(CHART_SIZE.0).height(CHART_SIZE.1),
-                dates
-            ]
-            .spacing(4)
+            style::panel(
+                column![
+                    canvas(trend).width(Fill).height(CHART_HEIGHT),
+                    dates,
+                    style::muted(NOTE),
+                ]
+                .spacing(10),
+            )
             .into()
         }
-        _ => text("No analyzed replays yet.").into(),
+        _ => style::panel(style::muted(
+            "No analyzed replays yet. Each replay you analyze adds a point here.",
+        ))
+        .into(),
     };
+    let pick = pick_list(Metric::ALL, Some(metric), |metric| {
+        app::Message::History(Message::Metric(metric))
+    })
+    .padding([8, 12])
+    .style(style::select);
 
-    scrollable(
-        column![
-            row![
-                text("Show"),
-                pick_list(Metric::ALL, Some(metric), |metric| {
-                    app::Message::History(Message::Metric(metric))
-                }),
-            ]
-            .spacing(8)
-            .align_y(Center),
-            text(NOTE).size(14),
-            chart,
-            text("Areas").size(20),
-            areas,
-        ]
-        .spacing(16),
-    )
+    style::scroll(style::page(
+        "History",
+        ABOUT,
+        pick,
+        column![chart, style::titled("Areas", areas)].spacing(16),
+    ))
     .into()
 }
 
@@ -119,17 +129,18 @@ fn area_row<'a>(
     let average = history::average(points, area);
     let summary = match average {
         Some((replays, mean)) => format!("{replays} replays, mean {}", format_value(metric, mean)),
-        None => "no analyzed replays".to_string(),
+        None => "No analyzed replays".to_string(),
     };
-    let swatch = text("●").color(charts::area_color(area));
+    let swatch = style::dot(charts::area_color(area), 10.0);
     let Some(index) = area else {
         return average.map(|_| {
             row![
                 swatch,
-                text("Before the first logged area").width(460),
-                text(summary)
+                text("Before the first logged area").width(Fill),
+                style::muted(summary).width(SUMMARY_WIDTH),
             ]
-            .spacing(12)
+            .spacing(16)
+            .align_y(Center)
             .into()
         });
     };
@@ -139,12 +150,14 @@ fn area_row<'a>(
             swatch,
             text_input("Name this area", &snapshot.name)
                 .on_input(move |name| app::Message::History(Message::Rename(index, name)))
-                .width(180),
-            text(describe(&snapshot.mapping)).width(160),
-            text(format!("since {}", replays::played_at(snapshot.since_ms))).width(200),
-            text(summary),
+                .padding([6, 10])
+                .width(200)
+                .style(style::input),
+            text(describe(&snapshot.mapping)).width(Fill),
+            style::muted(format!("since {}", replays::played_at(snapshot.since_ms))).width(150),
+            style::muted(summary).width(SUMMARY_WIDTH),
         ]
-        .spacing(12)
+        .spacing(16)
         .align_y(Center)
         .into(),
     )

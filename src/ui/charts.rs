@@ -3,6 +3,8 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme, mouse};
 use osu_tablet_optimizer::core::aim::{self, Sector};
 use osu_tablet_optimizer::core::history;
 
+use crate::ui::style;
+
 // Errors within this many radii are drawn; the circle marks one radius (a hit).
 const SCATTER_RANGE: f32 = 3.0;
 // Gain and turn differences are a few percent or degrees; magnify them so the shape shows.
@@ -11,14 +13,13 @@ const MAGNIFICATION: f64 = 5.0;
 const MAX_SCALE: f64 = 1.4;
 // Points and the area list share these, one per area in the order the areas were logged.
 const AREA_COLORS: [Color; 6] = [
-    Color::from_rgb(0.40, 0.65, 1.00),
-    Color::from_rgb(1.00, 0.60, 0.25),
-    Color::from_rgb(0.45, 0.85, 0.45),
-    Color::from_rgb(0.95, 0.40, 0.55),
-    Color::from_rgb(0.75, 0.55, 1.00),
-    Color::from_rgb(0.95, 0.85, 0.35),
+    style::PINK,
+    style::GREAT,
+    style::OK,
+    style::MEH,
+    Color::from_rgb8(0xB5, 0x8C, 0xFF),
+    Color::from_rgb8(0xFF, 0x9A, 0x52),
 ];
-const UNKNOWN_AREA: Color = Color::from_rgb(0.5, 0.5, 0.5);
 // Room on the left for the value labels, and around the points so edge ones show whole.
 const TREND_GUTTER: f32 = 64.0;
 const TREND_INSET: f32 = 4.0;
@@ -50,7 +51,7 @@ pub struct Trend {
 }
 
 pub fn area_color(area: Option<usize>) -> Color {
-    area.map_or(UNKNOWN_AREA, |index| AREA_COLORS[index % AREA_COLORS.len()])
+    area.map_or(style::MUTED, |index| AREA_COLORS[index % AREA_COLORS.len()])
 }
 
 impl<Message> canvas::Program<Message> for Scatter<'_> {
@@ -60,17 +61,14 @@ impl<Message> canvas::Program<Message> for Scatter<'_> {
         &self,
         _state: &(),
         renderer: &Renderer,
-        theme: &Theme,
+        _theme: &Theme,
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let palette = theme.extended_palette();
         let center = frame.center();
         let scale = bounds.width.min(bounds.height) / 2.0 / SCATTER_RANGE;
-        let axis = Stroke::default()
-            .with_color(palette.background.strong.color)
-            .with_width(1.0);
+        let axis = Stroke::default().with_color(style::LINE).with_width(1.0);
         frame.stroke(
             &Path::line(
                 Point::new(0.0, center.y),
@@ -86,8 +84,8 @@ impl<Message> canvas::Program<Message> for Scatter<'_> {
             axis,
         );
         let dot = Color {
-            a: 0.3,
-            ..palette.background.base.text
+            a: 0.35,
+            ..style::GREAT
         };
         for &(along, across) in self.errors {
             let (x, y) = (along as f32, across as f32);
@@ -98,21 +96,13 @@ impl<Message> canvas::Program<Message> for Scatter<'_> {
         }
         frame.stroke(
             &Path::circle(center, scale),
-            Stroke::default()
-                .with_color(palette.primary.base.color)
-                .with_width(1.5),
+            Stroke::default().with_color(style::PINK).with_width(2.0),
         );
-        label(
-            &mut frame,
-            Point::new(4.0, center.y - 18.0),
-            "undershoot",
-            theme,
-        );
+        label(&mut frame, Point::new(4.0, center.y - 18.0), "undershoot");
         label(
             &mut frame,
             Point::new(bounds.width - 76.0, center.y - 18.0),
             "overshoot",
-            theme,
         );
         vec![frame.into_geometry()]
     }
@@ -125,23 +115,18 @@ impl<Message> canvas::Program<Message> for Polar<'_> {
         &self,
         _state: &(),
         renderer: &Renderer,
-        theme: &Theme,
+        _theme: &Theme,
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let palette = theme.extended_palette();
         let center = frame.center();
         let ring = bounds.width.min(bounds.height) / 2.0 / MAX_SCALE as f32;
         frame.stroke(
             &Path::circle(center, ring),
-            Stroke::default()
-                .with_color(palette.background.strong.color)
-                .with_width(1.0),
+            Stroke::default().with_color(style::LINE).with_width(1.0),
         );
-        let stroke = Stroke::default()
-            .with_color(palette.primary.base.color)
-            .with_width(2.0);
+        let stroke = Stroke::default().with_color(style::PINK).with_width(2.0);
         for run in aim::outline_runs(self.sectors) {
             let closed = run.len() == self.sectors.len();
             let points: Vec<Point> = run
@@ -181,12 +166,11 @@ impl<Message> canvas::Program<Message> for AreaPreview {
         &self,
         _state: &(),
         renderer: &Renderer,
-        theme: &Theme,
+        _theme: &Theme,
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let palette = theme.extended_palette();
         let mut points = [self.current, self.full, self.capped].concat();
         if let Some(size) = self.tablet {
             points.extend([(0.0, 0.0), size]);
@@ -219,7 +203,7 @@ impl<Message> canvas::Program<Message> for AreaPreview {
             frame.fill_rectangle(
                 to_point((0.0, 0.0)),
                 Size::new((width * scale) as f32, (height * scale) as f32),
-                palette.background.weak.color,
+                style::RAISED,
             );
         }
         let outline = |corners: &[(f64, f64); 4]| {
@@ -231,14 +215,10 @@ impl<Message> canvas::Program<Message> for AreaPreview {
                 builder.close();
             })
         };
-        let primary = Stroke::default()
-            .with_color(palette.primary.base.color)
-            .with_width(2.0);
+        let primary = Stroke::default().with_color(style::PINK).with_width(2.0);
         frame.stroke(
             &outline(&self.current),
-            Stroke::default()
-                .with_color(palette.background.base.text)
-                .with_width(1.0),
+            Stroke::default().with_color(style::MUTED).with_width(1.5),
         );
         frame.stroke(
             &outline(&self.full),
@@ -262,7 +242,7 @@ impl<Message> canvas::Program<Message> for Trend {
         &self,
         _state: &(),
         renderer: &Renderer,
-        theme: &Theme,
+        _theme: &Theme,
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
@@ -283,9 +263,7 @@ impl<Message> canvas::Program<Message> for Trend {
                 Point::new(TREND_GUTTER, y(self.ideal)),
                 Point::new(bounds.width, y(self.ideal)),
             ),
-            Stroke::default()
-                .with_color(theme.extended_palette().background.strong.color)
-                .with_width(1.0),
+            Stroke::default().with_color(style::LINE).with_width(1.0),
         );
         for point in &self.points {
             frame.fill_rectangle(
@@ -294,23 +272,23 @@ impl<Message> canvas::Program<Message> for Trend {
                 area_color(point.snapshot),
             );
         }
-        label(&mut frame, Point::new(0.0, 0.0), &self.top, theme);
+        label(&mut frame, Point::new(0.0, 0.0), &self.top);
         label(
             &mut frame,
             Point::new(0.0, bounds.height - 16.0),
             &self.bottom,
-            theme,
         );
         vec![frame.into_geometry()]
     }
 }
 
-fn label(frame: &mut Frame, position: Point, content: &str, theme: &Theme) {
+fn label(frame: &mut Frame, position: Point, content: &str) {
     frame.fill_text(Text {
         content: content.to_string(),
         position,
-        color: theme.extended_palette().background.base.text,
-        size: 14.0.into(),
+        color: style::MUTED,
+        font: style::REGULAR,
+        size: 13.0.into(),
         ..Text::default()
     });
 }

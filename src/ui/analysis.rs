@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use iced::widget::{button, canvas, column, row, scrollable, space, text};
-use iced::{Center, Element, Task};
+use iced::widget::{canvas, column, row, text};
+use iced::{Center, Color, Element, Fill, FillPortion, Shrink, Task};
 use osu_tablet_optimizer::core::aim::{self, Report};
 use osu_tablet_optimizer::core::fit::{Estimate, Mapping, Settings};
 
 use crate::app::{self, App};
-use crate::ui::{area, charts, setup};
+use crate::ui::{area, charts, setup, style};
 
 // Stands in for OpenTabletDriver's mapping when none is set up. Overshoot, rotation and the axis
 // ratio don't depend on it; shear and the area suggestion do.
@@ -19,7 +19,8 @@ const NEUTRAL_MAPPING: Mapping = Mapping {
     display_width: 1920.0,
     display_height: 1080.0,
 };
-const CHART_SIZE: f32 = 360.0;
+const CHART_SIZE: f32 = 340.0;
+const MAX_SKIPPED: usize = 20;
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -109,154 +110,218 @@ fn is_outdated(analysis: &Analysis, app: &App) -> bool {
 
 pub fn view(app: &App) -> Element<'_, app::Message> {
     let state = &app.analysis;
-    let again = button("Analyze selected again").on_press_maybe(
-        (!state.running && !app.replays.selected.is_empty())
-            .then_some(app::Message::Analysis(Message::Run)),
-    );
     let Some(analysis) = &state.last else {
-        let hint = if state.running {
-            "Analyzing…"
+        let (about, content): (&str, Element<'_, app::Message>) = if state.running {
+            (
+                "Reading your replays and fitting your aim…",
+                style::panel(style::muted(
+                    "This takes a few seconds per hundred replays.",
+                ))
+                .into(),
+            )
         } else {
-            "Select replays on the Replays page, then press Analyze."
+            (
+                "How your jumps land compared to where the circles are.",
+                style::panel(
+                    column![
+                        style::heading("No analysis yet"),
+                        style::muted("Select replays on the Replays page, then press Analyze."),
+                        style::primary("Go to Replays")
+                            .on_press(app::Message::Navigate(app::Page::Replays)),
+                    ]
+                    .spacing(12),
+                )
+                .into(),
+            )
         };
-        return column![text(hint), again].spacing(12).into();
+        return style::page("Analysis", about, row![], content);
     };
 
     let report = &analysis.report;
-    let summary = text(format!(
-        "{} replays analyzed, {} skipped, {} jumps used.{}",
+    let summary = format!(
+        "{} replays read and {} jumps measured{}.",
         report.analyzed,
-        report.skipped.len(),
         report.errors.len(),
         if state.running {
-            " Analyzing again…"
+            "; analyzing again…"
         } else {
             ""
         }
-    ));
+    );
+    let outdated = !state.running && is_outdated(analysis, app);
+    let again = if outdated {
+        style::primary("Analyze selected again")
+    } else {
+        style::secondary("Analyze selected again")
+    }
+    .on_press_maybe(
+        (!state.running && !app.replays.selected.is_empty())
+            .then_some(app::Message::Analysis(Message::Run)),
+    );
+
     let numbers: Element<'_, app::Message> = match &report.suggestion {
-        Some(suggestion) => row![
-            metric(
-                "Overshoot",
-                format!("{:+.1}%", suggestion.overshoot.value * 100.0),
-                format!(
-                    "90%: {:+.2}% to {:+.2}%",
-                    suggestion.overshoot.low * 100.0,
-                    suggestion.overshoot.high * 100.0
+        Some(suggestion) => style::panel(
+            row![
+                metric(
+                    "Overshoot",
+                    format!("{:+.1}%", suggestion.overshoot.value * 100.0),
+                    format!(
+                        "90% range {:+.1}% to {:+.1}%",
+                        suggestion.overshoot.low * 100.0,
+                        suggestion.overshoot.high * 100.0
+                    ),
+                    verdict(
+                        suggestion.overshoot,
+                        0.0,
+                        "Jumps land long",
+                        "Jumps land short"
+                    ),
                 ),
-                verdict(
-                    suggestion.overshoot,
-                    0.0,
-                    "jumps land long",
-                    "jumps land short"
+                style::separator(),
+                metric(
+                    "Rotation",
+                    format!("{:+.2}°", suggestion.rotation_bias.value),
+                    format!(
+                        "90% range {:+.2}° to {:+.2}°",
+                        suggestion.rotation_bias.low, suggestion.rotation_bias.high
+                    ),
+                    verdict(
+                        suggestion.rotation_bias,
+                        0.0,
+                        "Moves turn clockwise",
+                        "Moves turn counter-clockwise",
+                    ),
                 ),
-            ),
-            metric(
-                "Rotation",
-                format!("{:+.2}°", suggestion.rotation_bias.value),
-                format!(
-                    "90%: {:+.2}° to {:+.2}°",
-                    suggestion.rotation_bias.low, suggestion.rotation_bias.high
+                style::separator(),
+                metric(
+                    "Horizontal ÷ vertical",
+                    format!("{:.3}", suggestion.axis_ratio.value),
+                    format!(
+                        "90% range {:.3} to {:.3}",
+                        suggestion.axis_ratio.low, suggestion.axis_ratio.high
+                    ),
+                    verdict(
+                        suggestion.axis_ratio,
+                        1.0,
+                        "Horizontal moves run longer",
+                        "Horizontal moves run shorter",
+                    ),
                 ),
-                verdict(
-                    suggestion.rotation_bias,
-                    0.0,
-                    "moves turn clockwise",
-                    "moves turn counter-clockwise",
+                style::separator(),
+                metric(
+                    "Shear",
+                    format!("{:+.2}°", suggestion.shear),
+                    "No range: shown for information".to_string(),
+                    (
+                        style::MUTED,
+                        "Skew OpenTabletDriver can't correct".to_string(),
+                    ),
                 ),
-            ),
-            metric(
-                "Horizontal ÷ vertical",
-                format!("{:.3}", suggestion.axis_ratio.value),
-                format!(
-                    "90%: {:.3} to {:.3}",
-                    suggestion.axis_ratio.low, suggestion.axis_ratio.high
-                ),
-                verdict(
-                    suggestion.axis_ratio,
-                    1.0,
-                    "horizontal moves run longer",
-                    "horizontal moves run shorter",
-                ),
-            ),
-            metric(
-                "Shear",
-                format!("{:+.2}°", suggestion.shear),
-                String::new(),
-                "skew OpenTabletDriver can't correct".to_string(),
-            ),
-        ]
-        .spacing(32)
+            ]
+            .spacing(24)
+            .height(Shrink),
+        )
         .into(),
-        None => {
-            text("Not enough data for numbers: select at least 5 replays with jumps (50 usable).")
-                .into()
-        }
+        None => style::banner(
+            style::MEH,
+            text("Not enough data for numbers: select at least 5 replays with jumps (50 usable)."),
+        )
+        .into(),
     };
     let charts = row![
         chart(
-            "Each jump's error, along and across the move (circle = hit)",
+            "Jump errors",
+            "Where each jump landed, along and across the move. The pink circle is a hit.",
             canvas(charts::Scatter {
                 errors: &report.errors
             })
         ),
         chart(
-            "Distance and turn by move direction (ring = perfect, magnified 5×)",
+            "By direction",
+            "Distance and turn per move direction, magnified 5×. The ring is perfect aim.",
             canvas(charts::Polar {
                 sectors: &report.sectors
             })
         ),
     ]
-    .spacing(32);
-    let skipped = column(report.skipped.iter().take(20).map(|(path, reason)| {
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        text(format!("Skipped {name}: {reason}")).size(14).into()
-    }))
-    .spacing(4);
+    .spacing(16);
 
-    let mut page = column![row![summary, space::horizontal(), again].align_y(Center)].spacing(24);
-    if !state.running && is_outdated(analysis, app) {
-        page = page.push(text(
-            "The selection or setup changed since this analysis. Analyze again to update.",
+    let mut content = column![].spacing(16);
+    if outdated {
+        content = content.push(style::banner(
+            style::MEH,
+            text("The selection or setup changed since this analysis. Analyze again to update it."),
         ));
     }
-    scrollable(page.push(numbers).push(charts).push(skipped)).into()
+    content = content.push(numbers).push(charts);
+    if !report.skipped.is_empty() {
+        content = content.push(skipped(&report.skipped));
+    }
+    style::scroll(style::page("Analysis", summary, again, content)).into()
 }
 
 fn metric<'a>(
     title: &'a str,
     value: String,
-    interval: String,
-    verdict: String,
+    range: String,
+    (tone, verdict): (Color, String),
 ) -> Element<'a, app::Message> {
     column![
-        text(title).size(14),
-        text(value).size(28),
-        text(interval).size(14),
-        text(verdict).size(14)
+        style::muted(title),
+        text(value).size(32).font(style::SEMIBOLD),
+        style::muted(range),
+        row![style::dot(tone, 8.0), text(verdict).size(13)]
+            .spacing(8)
+            .align_y(Center),
     ]
-    .spacing(2)
+    .spacing(6)
+    .width(Fill)
     .into()
 }
 
 fn chart<'a>(
     title: &'a str,
+    about: &'a str,
     canvas: iced::widget::Canvas<impl canvas::Program<app::Message> + 'a, app::Message>,
 ) -> Element<'a, app::Message> {
-    column![
-        text(title).size(14),
-        canvas.width(CHART_SIZE).height(CHART_SIZE)
-    ]
-    .spacing(8)
+    style::panel(
+        column![
+            style::heading(title),
+            style::muted(about),
+            canvas.width(Fill).height(CHART_SIZE)
+        ]
+        .spacing(8),
+    )
     .into()
 }
 
-fn verdict(estimate: Estimate, neutral: f64, above: &str, below: &str) -> String {
+fn skipped(skipped: &[(PathBuf, String)]) -> Element<'_, app::Message> {
+    let mut lines = column(skipped.iter().take(MAX_SKIPPED).map(|(path, reason)| {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        row![
+            text(name).size(13).width(FillPortion(2)),
+            style::muted(reason.as_str()).width(FillPortion(3)),
+        ]
+        .spacing(16)
+        .into()
+    }))
+    .spacing(6);
+    if skipped.len() > MAX_SKIPPED {
+        lines = lines.push(style::muted(format!(
+            "…and {} more.",
+            skipped.len() - MAX_SKIPPED
+        )));
+    }
+    style::titled("Skipped replays", lines).into()
+}
+
+// A clear effect is worth correcting (osu!'s 50 color); none is fine (its 300 color).
+fn verdict(estimate: Estimate, neutral: f64, above: &str, below: &str) -> (Color, String) {
     if estimate.contains(neutral) {
-        "no clear effect".to_string()
+        (style::GREAT, "No clear effect".to_string())
     } else if estimate.value > neutral {
-        above.to_string()
+        (style::MEH, above.to_string())
     } else {
-        below.to_string()
+        (style::MEH, below.to_string())
     }
 }
