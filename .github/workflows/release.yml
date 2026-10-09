@@ -14,7 +14,8 @@ jobs:
         include:
           - os: windows-latest
             target: windows-x64
-          - os: ubuntu-latest
+          # Oldest runner on purpose: the binary only runs on distros with glibc >= the build host's.
+          - os: ubuntu-22.04
             target: linux-x64
           # ponytail: Apple silicon only; add an Intel macOS runner row if someone needs it.
           - os: macos-latest
