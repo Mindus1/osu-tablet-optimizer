@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn stable_roots_add_songs_folder_outside_install() {
         let dir = TempDir::new("stable");
-        assert_eq!(stable_roots(&dir.0), [dir.0.clone()]);
+        assert_eq!(stable_roots(&dir.0), [dir.0.as_path()]);
 
         let elsewhere = std::env::temp_dir().join("oto-elsewhere-songs");
         dir.write("osu!.cfg", "BeatmapDirectory = Ignored\n");
