@@ -4,7 +4,7 @@ Analyzes your osu! replays (stable and lazer) and suggests a better [OpenTabletD
 
 Suggestions are exported as OTD presets, so your current settings stay untouched.
 
-Status: in development. Setup, the replay list, the analysis and area suggestions work; history is next.
+Status: in development. Setup, the replay list, the analysis, area suggestions and the history work.
 
 ## Download
 
@@ -23,9 +23,10 @@ The builds are unsigned, so Windows SmartScreen or macOS may ask before the firs
    - **Profile and tablet:** pick your tablet's profile. The tablet's size comes from OpenTabletDriver's tablet list, or you can enter it yourself.
    - **Players:** filled in after the first scan with the name that appears most in your replays. Edit it if you share the PC.
 2. **Replays** lists your osu!standard replays, newest first.
-   - **Filter:** by last session, 7 days, 30 days or all time, or search map titles.
+   - **Filter:** by last session, 7 days, 30 days or all time, by tablet area (see History), or search map titles. Analyzing one area's replays at a time keeps an older area from blurring the suggestion.
    - **Add replays:** with *Add files…* or by dropping `.osr` files onto the window.
    - **Select:** tick the replays you want analyzed, then press *Analyze*.
+   - **Area column:** the tablet area each replay was played with. When it's wrong (see History), select the replays and pick the right one under *Assign selected to area…*; *By date* undoes that.
 3. **Analysis** measures how your jumps land, over every jump of at least three circle radii in the selected replays. It needs at least 5 replays. Each number comes with a 90% range; when that range includes "no change", the page says *no clear effect*.
    - **Overshoot:** how much farther (+) or shorter (−) than intended your jumps travel.
    - **Rotation:** how many degrees your moves come out turned clockwise (+) or counter-clockwise (−).
@@ -39,8 +40,11 @@ The builds are unsigned, so Windows SmartScreen or macOS may ask before the firs
    - **Full fit:** the whole correction the analysis measured.
    - Size, aspect ratio and rotation stay as they are when the analysis shows no clear effect.
    - **Export:** saves the area as an OpenTabletDriver preset named like `oto-2026-10-09-capped` and copies your other settings as they are. The area keeps its center, moved only as far as needed to stay on the tablet. In OpenTabletDriver, apply the preset under *File → Presets*; if OpenTabletDriver is already running, use *Refresh presets* first.
+5. **History** shows whether a new area helped.
+   - **Areas:** the app logs your profile's area whenever it differs from the last one, at start, before each scan and when you pick another profile. Each area counts from the time OpenTabletDriver saved its settings, so replays from before the first logged area are *unknown*. Saving any other OpenTabletDriver setting also updates that time; assign replays by hand on the Replays page when that matters. Give an area a name by typing it in.
+   - **Chart:** each analyzed replay adds a point, colored by its area: overshoot, rotation, horizontal ÷ vertical, or the distance from the circle's center. Each point is measured from that replay alone, so points scatter more than the Analysis page's numbers, and stopping at a circle's edge counts as a little undershoot. The list shows each area's mean.
 
-The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
+The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`), the history (`history.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
 
 ## Build from source
 
