@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+dirs = "7"
 iced = "0.14"
 lzma-rs = "0.3"
 serde = { version = "1", features = ["derive"] }
