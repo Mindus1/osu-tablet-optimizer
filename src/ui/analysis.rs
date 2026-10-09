@@ -8,7 +8,7 @@ use osu_tablet_optimizer::core::aim::{self, Report};
 use osu_tablet_optimizer::core::fit::{Estimate, Mapping, Settings};
 
 use crate::app::{self, App};
-use crate::ui::{charts, setup};
+use crate::ui::{area, charts, setup};
 
 // Stands in for OpenTabletDriver's mapping when none is set up. Overshoot, rotation and the axis
 // ratio don't depend on it; shear and the area suggestion do.
@@ -52,6 +52,8 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
             app.history.record(&analysis.report.measured);
             app.save_history();
             app.analysis.last = Some(analysis);
+            // The last export message belongs to the previous analysis.
+            app.area = area::State::default();
         }
         Message::Failed => {
             app.notice = Some("The analysis failed unexpectedly.".to_string());
