@@ -243,7 +243,7 @@ fn is_valid(mapping: &Mapping) -> bool {
     sizes.iter().all(|size| size.is_finite() && *size > 0.0) && mapping.rotation.is_finite()
 }
 
-fn is_usable(sample: &Sample, settings: &Settings) -> bool {
+pub fn is_usable(sample: &Sample, settings: &Settings) -> bool {
     let (ux, uy) = sample.intended;
     let (vx, vy) = sample.actual;
     sample.radius > 0.0
