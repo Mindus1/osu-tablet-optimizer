@@ -1,27 +1,28 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::num::NonZero;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::SystemTime;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rosu_map::section::metadata::Metadata;
+use serde::{Deserialize, Serialize};
 
 use crate::core::replay::{self, Header};
 
 const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
 const BEATMAP_SIGNATURE: &[u8] = b"osu file format v";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Content {
     Beatmap { md5: String, title: String },
     Replay(Header),
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Entry {
     modified: SystemTime,
     len: u64,
@@ -34,12 +35,32 @@ pub struct Beatmap<'a> {
     pub title: &'a str,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Library {
     files: HashMap<PathBuf, Entry>,
 }
 
 impl Library {
+    pub fn load(path: &Path) -> Result<Library> {
+        if !path.exists() {
+            return Ok(Library::default());
+        }
+        let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+        serde_json::from_reader(BufReader::new(file))
+            .with_context(|| format!("reading {}", path.display()))
+    }
+
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        }
+        let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(&mut writer, self)?;
+        writer.flush()?;
+        Ok(())
+    }
+
     // Returns the files that could not be read; the next scan retries them.
     pub fn scan(&mut self, roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut candidates = Vec::new();
@@ -95,6 +116,19 @@ impl Library {
                 Content::Replay(header) => Some((path.as_path(), header)),
                 _ => None,
             })
+    }
+
+    pub fn most_frequent_player(&self) -> Option<&str> {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for (_, header) in self.replays() {
+            if !header.player.is_empty() {
+                *counts.entry(&header.player).or_default() += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|&(name, count)| (count, std::cmp::Reverse(name)))
+            .map(|(name, _)| name)
     }
 }
 
@@ -508,5 +542,52 @@ mod tests {
         library.scan(dir.roots());
 
         assert!(library.files.is_empty());
+    }
+
+    #[test]
+    fn cache_survives_save_and_load() {
+        let dir = TempDir::new("cache");
+        dir.write("Songs/set/map.osu", BEATMAP);
+        dir.write("Data/r/x.osr", replay_bytes("player"));
+        let library = scanned(&dir);
+        let cache = dir.0.join("cache/library.json");
+
+        library.save(&cache).unwrap();
+        let loaded = Library::load(&cache).unwrap();
+
+        assert_eq!(loaded.files, library.files);
+    }
+
+    #[test]
+    fn missing_cache_loads_empty() {
+        let dir = TempDir::new("no-cache");
+
+        assert!(
+            Library::load(&dir.0.join("library.json"))
+                .unwrap()
+                .files
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn corrupt_cache_is_an_error() {
+        let dir = TempDir::new("corrupt-cache");
+        let cache = dir.write("library.json", "{not json");
+
+        assert!(Library::load(&cache).is_err());
+    }
+
+    #[test]
+    fn most_frequent_player_wins() {
+        let dir = TempDir::new("players");
+        dir.write("r/1.osr", replay_bytes("alice"));
+        dir.write("r/2.osr", replay_bytes("bob"));
+        dir.write("r/3.osr", replay_bytes("bob"));
+        dir.write("r/4.osr", replay_bytes(""));
+        dir.write("r/5.osr", replay_bytes(""));
+        dir.write("r/6.osr", replay_bytes(""));
+
+        assert_eq!(scanned(&dir).most_frequent_player(), Some("bob"));
     }
 }

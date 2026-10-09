@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use anyhow::{Context, Result, bail, ensure};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 // From this version on, lazer appends a JSON score-info block that holds the full mod list.
@@ -36,7 +36,7 @@ const LEGACY_MODS: [(u32, &str); 19] = [
     (1 << 30, "MR"),
 ];
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Header {
     pub mode: u8,
     pub version: i32,
