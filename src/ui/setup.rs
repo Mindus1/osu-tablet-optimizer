@@ -123,8 +123,11 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
         Message::AddOsuFolder => return pick_folder(Message::OsuFolderPicked),
         Message::OsuFolderPicked(Some(folder)) => {
             let mut roots = app.config.osu_roots();
-            roots.extend(library::roots_for(&folder));
-            roots.dedup();
+            for root in library::roots_for(&folder) {
+                if !roots.contains(&root) {
+                    roots.push(root);
+                }
+            }
             app.config.osu_roots = Some(roots);
             return rescan(app);
         }
@@ -287,7 +290,11 @@ fn tablet_section(app: &App) -> Element<'_, app::Message> {
         .ok()
         .and_then(|settings| settings.profiles.get(app.config.profile))
         .map(|profile| profile.tablet.as_str());
-    let line = match (tablet, app.config.tablet_size, tablet.and_then(tablets::tablet_size)) {
+    let line = match (
+        tablet,
+        app.config.tablet_size,
+        tablet.and_then(tablets::tablet_size),
+    ) {
         (_, Some(_), _) => format!("{} — size entered by you.", tablet.unwrap_or("Tablet")),
         (Some(name), None, Some((width, height))) => {
             format!("{name} — {width} × {height} mm, from OpenTabletDriver's tablet list.")
@@ -295,8 +302,10 @@ fn tablet_section(app: &App) -> Element<'_, app::Message> {
         (Some(name), None, None) => {
             format!("{name} — not in OpenTabletDriver's tablet list; enter its active area.")
         }
-        (None, None, _) => "No OpenTabletDriver profile yet; choose its folder above or enter                             the tablet's active area."
-            .to_string(),
+        (None, None, _) => {
+            "No OpenTabletDriver profile yet; choose its folder above or enter the tablet's size."
+                .to_string()
+        }
     };
     column![
         heading("Tablet"),

@@ -21,6 +21,13 @@ pub struct Config {
     pub fit: fit::Settings,
 }
 
+// Moves a config that can't be read out of the way, so saving the defaults later keeps it.
+pub fn set_aside(path: &Path) -> Result<PathBuf> {
+    let aside = path.with_extension("json.bad");
+    fs::rename(path, &aside).with_context(|| format!("moving {} aside", path.display()))?;
+    Ok(aside)
+}
+
 impl Config {
     // None on first run, before anything was saved.
     pub fn load(path: &Path) -> Result<Option<Config>> {
@@ -91,6 +98,17 @@ mod tests {
         assert_eq!(config.players, ["someone"]);
         assert_eq!(config.fit, fit::Settings::default());
         assert_eq!(config.osu_roots, None);
+    }
+
+    #[test]
+    fn unreadable_config_is_set_aside() {
+        let dir = TempDir::new("config-aside");
+        let path = dir.write("config.json", "{ not json");
+
+        let aside = set_aside(&path).unwrap();
+
+        assert!(!path.exists());
+        assert_eq!(fs::read_to_string(aside).unwrap(), "{ not json");
     }
 
     #[test]

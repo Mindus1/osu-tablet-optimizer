@@ -4,7 +4,7 @@ use std::sync::Arc;
 use iced::futures::{SinkExt, StreamExt};
 use iced::widget::{button, column, container, row, text};
 use iced::{Element, Fill, Subscription, Task, Theme, event, window};
-use osu_tablet_optimizer::core::config::Config;
+use osu_tablet_optimizer::core::config::{self, Config};
 use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::otd::OtdSettings;
 use osu_tablet_optimizer::core::storage;
@@ -59,6 +59,8 @@ pub enum ScanEvent {
         unreadable: usize,
         error: Option<String>,
     },
+    // The scan thread stopped without a result (it panicked).
+    Failed,
 }
 
 pub struct App {
@@ -67,6 +69,8 @@ pub struct App {
     first_run: bool,
     pub library: Arc<Library>,
     pub scanning: Option<(usize, usize)>,
+    // A rescan asked for while scanning (e.g. a folder added in Setup) runs right after.
+    rescan_pending: bool,
     pub otd: Result<OtdSettings, String>,
     pub replays: replays::State,
     pub setup: setup::State,
@@ -79,7 +83,7 @@ impl App {
         let (config, first_run, notice) = match loaded {
             Some(Ok(Some(config))) => (config, false, None),
             Some(Ok(None)) | None => (Config::default(), true, None),
-            Some(Err(error)) => (Config::default(), false, Some(format!("{error:#}"))),
+            Some(Err(error)) => (Config::default(), true, Some(unreadable_config(&error))),
         };
         let mut app = App {
             page: if first_run {
@@ -93,6 +97,7 @@ impl App {
             first_run,
             library: Arc::default(),
             scanning: Some((0, 0)),
+            rescan_pending: false,
             replays: replays::State::default(),
             notice,
         };
@@ -108,14 +113,13 @@ impl App {
                 self.scanning = Some((0, 0));
                 return self.scan();
             }
-            Message::Rescan => {}
+            Message::Rescan => self.rescan_pending = true,
             Message::Scan(ScanEvent::Progress(done, total)) => self.scanning = Some((done, total)),
             Message::Scan(ScanEvent::Done {
                 library,
                 unreadable,
                 error,
             }) => {
-                self.scanning = None;
                 self.library = library;
                 if self.first_run
                     && self.config.players.is_empty()
@@ -125,10 +129,17 @@ impl App {
                     self.setup = setup::State::new(&self.config);
                     self.save_config();
                 }
-                self.notice = error.or_else(|| {
+                if let Some(problem) = error.or_else(|| {
                     (unreadable > 0).then(|| format!("{unreadable} files could not be read"))
-                });
+                }) {
+                    self.notice = Some(problem);
+                }
                 self.replays.refresh(&self.library, &self.config);
+                return self.finish_scan();
+            }
+            Message::Scan(ScanEvent::Failed) => {
+                self.notice = Some("Scanning the osu! folders failed; try Rescan.".to_string());
+                return self.finish_scan();
             }
             Message::FileDropped(path) => replays::add_files(self, vec![path]),
             Message::Replays(message) => return replays::update(self, message),
@@ -181,6 +192,14 @@ impl App {
         })
     }
 
+    fn finish_scan(&mut self) -> Task<Message> {
+        self.scanning = None;
+        if std::mem::take(&mut self.rescan_pending) {
+            return self.update(Message::Rescan);
+        }
+        Task::none()
+    }
+
     pub fn save_config(&mut self) {
         if let Some(Err(error)) = config_path().map(|path| self.config.save(&path)) {
             self.notice = Some(format!("{error:#}"));
@@ -219,14 +238,30 @@ impl App {
                         error,
                     });
                 });
+                let mut finished = false;
                 while let Some(event) = events.next().await {
+                    finished |= matches!(event, ScanEvent::Done { .. });
                     if output.send(event).await.is_err() {
-                        break;
+                        return;
                     }
+                }
+                if !finished {
+                    let _ = output.send(ScanEvent::Failed).await;
                 }
             }),
             Message::Scan,
         )
+    }
+}
+
+// The unreadable file is moved aside so saving the defaults later doesn't destroy it.
+fn unreadable_config(error: &anyhow::Error) -> String {
+    match config_path().map(|path| config::set_aside(&path)) {
+        Some(Ok(aside)) => format!(
+            "Your settings could not be read ({error:#}); they were moved to {} and defaults are used.",
+            aside.display()
+        ),
+        _ => format!("{error:#}"),
     }
 }
 

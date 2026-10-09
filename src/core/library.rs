@@ -87,6 +87,9 @@ impl Library {
         for root in roots {
             collect_candidates(root, &mut candidates);
         }
+        // Overlapping or repeated roots would otherwise read the same files twice.
+        candidates.sort_by(|a, b| a.0.cmp(&b.0));
+        candidates.dedup_by(|a, b| a.0 == b.0);
         let (candidates, uncacheable): (Vec<_>, Vec<_>) = candidates
             .into_iter()
             .partition(|(path, modified, _)| is_cacheable(path, *modified));
@@ -727,6 +730,19 @@ pub(crate) mod tests {
         });
 
         assert_eq!(*last.lock().unwrap(), (3, 3));
+    }
+
+    #[test]
+    fn overlapping_roots_are_read_once() {
+        let dir = TempDir::new("overlap");
+        dir.write("Songs/set/map.osu", BEATMAP);
+        dir.write("Data/r/x.osr", replay_bytes("player"));
+        let total = std::sync::Mutex::new(0);
+        let roots = [dir.0.clone(), dir.0.join("Songs"), dir.0.clone()];
+
+        Library::default().scan(&roots, &|_, all| *total.lock().unwrap() = all);
+
+        assert_eq!(*total.lock().unwrap(), 2);
     }
 
     #[test]
