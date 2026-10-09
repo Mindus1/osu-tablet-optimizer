@@ -61,12 +61,16 @@ impl Library {
         Ok(())
     }
 
-    // Returns the files that could not be read; the next scan retries them.
+    // Returns the files that could not be read or cached; the next scan retries them.
     pub fn scan(&mut self, roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut candidates = Vec::new();
         for root in roots {
             collect_candidates(root, &mut candidates);
         }
+        let (candidates, uncacheable): (Vec<_>, Vec<_>) = candidates
+            .into_iter()
+            .partition(|(path, modified, _)| is_cacheable(path, *modified));
+        let mut unreadable: Vec<PathBuf> = uncacheable.into_iter().map(|(path, ..)| path).collect();
 
         let mut previous = std::mem::take(&mut self.files);
         let mut changed = Vec::new();
@@ -80,7 +84,6 @@ impl Library {
         }
 
         let contents = par_map(&changed, |(path, _, _)| read_content(path));
-        let mut unreadable = Vec::new();
         for ((path, modified, len), content) in changed.into_iter().zip(contents) {
             match content {
                 Ok(content) => {
@@ -149,13 +152,20 @@ pub fn default_roots() -> Vec<PathBuf> {
     roots
 }
 
-// Stable's Songs folder can be moved anywhere via BeatmapDirectory in the user's osu!.<name>.cfg.
+// Stable's Songs folder can be moved anywhere via BeatmapDirectory in the user's osu!.<name>.cfg,
+// or left behind as a junction/symlink, which the walk doesn't follow. Resolving it gives the
+// real folder its own root.
 pub fn stable_roots(stable: &Path) -> Vec<PathBuf> {
     let songs = songs_dir(stable);
-    if songs.starts_with(stable) {
+    let resolved = fs::canonicalize(&songs).ok();
+    let inside_stable = match (&resolved, fs::canonicalize(stable)) {
+        (Some(songs), Ok(stable)) => songs.starts_with(stable),
+        _ => songs.starts_with(stable),
+    };
+    if inside_stable {
         vec![stable.to_path_buf()]
     } else {
-        vec![stable.to_path_buf(), songs]
+        vec![stable.to_path_buf(), resolved.unwrap_or(songs)]
     }
 }
 
@@ -210,6 +220,11 @@ fn collect_candidates(dir: &Path, out: &mut Vec<(PathBuf, SystemTime, u64)>) {
             out.push((path, modified, meta.len()));
         }
     }
+}
+
+// The JSON cache only holds UTF-8 paths and post-1970 times; anything else would make save() fail.
+fn is_cacheable(path: &Path, modified: SystemTime) -> bool {
+    path.to_str().is_some() && modified >= SystemTime::UNIX_EPOCH
 }
 
 // lazer's file store has no extensions, so extension-less files are sniffed too.
@@ -347,6 +362,22 @@ mod tests {
             .unwrap()
             .set_times(FileTimes::new().set_modified(modified))
             .unwrap();
+    }
+
+    #[cfg(windows)]
+    fn link_dir(target: &Path, link: &Path) {
+        let output = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+    }
+
+    #[cfg(unix)]
+    fn link_dir(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
     }
 
     #[test]
@@ -542,6 +573,51 @@ mod tests {
         library.scan(dir.roots());
 
         assert!(library.files.is_empty());
+    }
+
+    #[test]
+    fn linked_songs_folder_is_scanned() {
+        let stable = TempDir::new("linked-stable");
+        let songs = TempDir::new("linked-songs");
+        songs.write("set/map.osu", BEATMAP);
+        link_dir(&songs.0, &stable.0.join("Songs"));
+
+        let mut library = Library::default();
+        assert!(library.scan(&stable_roots(&stable.0)).is_empty());
+
+        assert!(
+            library
+                .beatmaps_by_md5()
+                .contains_key(md5_hex(BEATMAP.as_bytes()).as_str())
+        );
+    }
+
+    #[test]
+    fn files_the_cache_cannot_hold_are_reported_not_cached() {
+        let dir = TempDir::new("pre-epoch");
+        let path = dir.write("Songs/set/map.osu", BEATMAP);
+        set_modified(&path, SystemTime::UNIX_EPOCH - Duration::from_secs(60));
+
+        let mut library = Library::default();
+        let unreadable = library.scan(dir.roots());
+
+        assert_eq!(unreadable, [path]);
+        library.save(&dir.0.join("library.json")).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_paths_are_reported_not_cached() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = TempDir::new("non-utf8");
+        let path = dir.0.join(std::ffi::OsStr::from_bytes(b"\xffmap.osu"));
+        fs::write(&path, BEATMAP).unwrap();
+
+        let mut library = Library::default();
+        let unreadable = library.scan(dir.roots());
+
+        assert_eq!(unreadable, [path]);
+        library.save(&dir.0.join("library.json")).unwrap();
     }
 
     #[test]
