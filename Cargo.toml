@@ -1,0 +1,8 @@
+[package]
+name = "osu-tablet-optimizer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+iced = "0.14"
