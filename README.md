@@ -34,7 +34,7 @@ The builds are unsigned, so Windows SmartScreen or macOS may ask before the firs
    - **Shear:** a skew OpenTabletDriver can't correct; shown for information.
    - **Error scatter:** each dot is one jump's error, along the jump (right = too far) and across it. The circle is the hit radius.
    - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot. Stopping at the circle's edge is left out, as in the Overshoot number, and directions with fewer than 10 jumps are left open.
-   - When you change the selection or setup afterwards, the page says so; press *Analyze selected again* to update.
+   - When you change the selection or setup afterwards, the page says so; press *Analyze* there to update.
 4. **Area** draws the suggested tablet area over your current one and lists the numbers. It needs an analysis made with OpenTabletDriver's settings found, and a profile in absolute mode.
    - **Capped step:** changes the size by at most 3% and the rotation by at most 2°. You can change these limits in Setup. Take this step, play a few sessions, then analyze again.
    - **Full fit:** the whole correction the analysis measured.
@@ -55,5 +55,7 @@ cargo run --release
 ```
 
 ## Credits
+
+The interface uses [Exo 2](https://github.com/googlefonts/Exo-2.0) (SIL Open Font License 1.1, see `assets/fonts/OFL.txt`).
 
 Tablet dimensions in `src/core/tablets.tsv` come from [OpenTabletDriver](https://github.com/OpenTabletDriver/OpenTabletDriver)'s tablet configurations (LGPL-3.0).
