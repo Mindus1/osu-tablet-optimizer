@@ -110,19 +110,21 @@ impl History {
     }
 
     // Logs OpenTabletDriver's area when it differs from the last one logged; true when it did.
+    // A change without a newer save of the settings (another profile or OTD folder picked in
+    // Setup) can't be dated, so it replaces the last area instead of starting a new one.
     pub fn observe(&mut self, mapping: Mapping, saved_at_ms: i64) -> bool {
-        if self
-            .snapshots
-            .last()
-            .is_some_and(|last| last.mapping == mapping)
-        {
-            return false;
+        match self.snapshots.last_mut() {
+            Some(last) if last.mapping == mapping => return false,
+            Some(last) if saved_at_ms <= last.since_ms => {
+                last.name.clear();
+                last.mapping = mapping;
+            }
+            _ => self.snapshots.push(Snapshot {
+                name: String::new(),
+                mapping,
+                since_ms: saved_at_ms,
+            }),
         }
-        self.snapshots.push(Snapshot {
-            name: String::new(),
-            mapping,
-            since_ms: saved_at_ms,
-        });
         true
     }
 
@@ -268,6 +270,27 @@ mod tests {
         let since: Vec<i64> = history.snapshots.iter().map(|s| s.since_ms).collect();
         assert_eq!(since, [100, 200, 300]);
         assert!(history.snapshots.iter().all(|s| s.name.is_empty()));
+    }
+
+    #[test]
+    fn an_area_change_without_a_new_save_replaces_the_last_area() {
+        let mut history = two_areas();
+        history.snapshots[1].name = "named".to_string();
+
+        // Another OTD folder with older settings, then another profile of the same settings.
+        assert!(history.observe(mapping(70.0), 150));
+        assert!(history.observe(mapping(72.0), 200));
+
+        assert_eq!(history.snapshots.len(), 2);
+        assert_eq!(
+            history.snapshots[1],
+            Snapshot {
+                name: String::new(),
+                mapping: mapping(72.0),
+                since_ms: 200,
+            }
+        );
+        assert_eq!(history.snapshot_of(Path::new("a.osr"), 999), Some(1));
     }
 
     #[test]
