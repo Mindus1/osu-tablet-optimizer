@@ -187,7 +187,7 @@ pub fn default_roots() -> Vec<PathBuf> {
 // Stable's Songs folder can be moved anywhere via BeatmapDirectory in the user's osu!.<name>.cfg,
 // or left behind as a junction/symlink, which the walk doesn't follow. Resolving it gives the
 // real folder its own root.
-pub fn stable_roots(stable: &Path) -> Vec<PathBuf> {
+fn stable_roots(stable: &Path) -> Vec<PathBuf> {
     let songs = songs_dir(stable);
     let resolved = fs::canonicalize(&songs).ok();
     let inside_stable = match (&resolved, fs::canonicalize(stable)) {
@@ -202,7 +202,7 @@ pub fn stable_roots(stable: &Path) -> Vec<PathBuf> {
 }
 
 // lazer can move its data; the default folder then only keeps a storage.ini pointing there.
-pub fn lazer_root(default: &Path) -> PathBuf {
+fn lazer_root(default: &Path) -> PathBuf {
     fs::read_to_string(default.join("storage.ini"))
         .ok()
         .and_then(|text| ini_value(&text, "FullPath"))

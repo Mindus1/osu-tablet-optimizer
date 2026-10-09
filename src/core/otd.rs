@@ -75,7 +75,7 @@ impl OtdSettings {
     // Writes a copy of the settings with the profile's area replaced, as an OTD preset. The
     // center is kept, moved just enough to stay on the tablet when its size is known. Existing
     // presets are never overwritten.
-    pub fn write_preset(
+    fn write_preset(
         &self,
         data_dir: &Path,
         index: usize,
