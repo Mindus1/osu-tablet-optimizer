@@ -13,13 +13,13 @@ use crate::core::replay::{self, Frame, Mod, Replay};
 
 const PLAYFIELD_WIDTH: f64 = 512.0;
 const PLAYFIELD_HEIGHT: f64 = 384.0;
-// osu! plays beatmaps older than format v5 24 ms late, so replay time runs 24 ms behind them.
-const EARLY_VERSION_TIMING_OFFSET: f64 = 24.0;
 const KEY_A: u32 = 1 | 4;
 const KEY_B: u32 = 2 | 8;
 // ponytail: fixed structural limits; make them settings if users need to tune them.
 const MAX_GAP_MS: f64 = 1000.0;
 const STACK_DISTANCE: f64 = 3.0;
+// Longer than any osu! stack window (approach time ≤ 1800 ms × stack leniency ≤ 1).
+const STACK_WINDOW_MS: f64 = 2000.0;
 // Mods that leave object positions alone, plus the ones applied below (HR, EZ, MR, DA).
 const SUPPORTED_MODS: [&str; 31] = [
     "NF", "EZ", "HD", "HR", "SD", "PF", "DT", "NC", "HT", "DC", "FL", "SO", "SV2", "CL", "MU",
@@ -79,12 +79,7 @@ pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
     let difficulty = difficulty(beatmap, &replay.mods)?;
     let radius = 54.4 - 4.48 * difficulty.circle_size;
     let window = (200.0 - 10.0 * difficulty.overall_difficulty).floor() - 0.5;
-    let offset = if beatmap.format_version < 5 {
-        EARLY_VERSION_TIMING_OFFSET
-    } else {
-        0.0
-    };
-    let presses = presses(&replay.frames, offset);
+    let presses = presses(&replay.frames);
 
     let mut next_press = 0;
     let mut previous: Option<(Target, Press)> = None;
@@ -175,14 +170,14 @@ fn mirror_axes(m: &Mod) -> (bool, bool) {
     (reflection != 1, reflection != 0)
 }
 
-fn presses(frames: &[Frame], offset: f64) -> Vec<Press> {
+fn presses(frames: &[Frame]) -> Vec<Press> {
     let mut held = 0;
     let mut presses = Vec::new();
     for frame in frames {
         for key in [KEY_A, KEY_B] {
             if frame.keys & key != 0 && held & key == 0 {
                 presses.push(Press {
-                    time: frame.time as f64 + offset,
+                    time: frame.time as f64,
                     x: f64::from(frame.x),
                     y: f64::from(frame.y),
                 });
@@ -225,14 +220,22 @@ fn targets(beatmap: &Beatmap, difficulty: &Difficulty) -> Vec<Option<Target>> {
         })
         .collect();
 
-    // osu! nudges stacked objects apart by a few pixels; their file positions are not where they
-    // were drawn, so they are left out instead of being re-stacked.
-    for i in 1..targets.len() {
-        if let (Some(a), Some(b)) = (targets[i - 1], targets[i])
-            && (a.x - b.x).hypot(a.y - b.y) < STACK_DISTANCE
-        {
-            for target in targets[i - 1..=i].iter_mut().flatten() {
-                target.stacked = true;
+    // osu! nudges an object apart from any earlier one within 3 px and its stack window, so its
+    // file position is not where it was drawn; such objects are left out instead of re-stacked.
+    // ponytail: objects stacked on slider ends are not detected (needs slider end positions).
+    for i in 0..targets.len() {
+        let Some(a) = targets[i] else { continue };
+        for j in i + 1..targets.len() {
+            let Some(b) = targets[j] else { continue };
+            if b.time - a.time > STACK_WINDOW_MS {
+                break;
+            }
+            if (a.x - b.x).hypot(a.y - b.y) < STACK_DISTANCE {
+                for k in [i, j] {
+                    if let Some(target) = &mut targets[k] {
+                        target.stacked = true;
+                    }
+                }
             }
         }
     }
@@ -349,7 +352,7 @@ mod tests {
             keys,
         });
 
-        let times: Vec<f64> = presses(&frames, 0.0).iter().map(|p| p.time).collect();
+        let times: Vec<f64> = presses(&frames).iter().map(|p| p.time).collect();
 
         assert_eq!(times, [0.0, 1500.0]);
     }
@@ -473,20 +476,41 @@ mod tests {
     }
 
     #[test]
-    fn old_beatmap_format_shifts_press_times() {
-        let replay = replay(vec![], &[(880, 100.0, 100.0), (1380, 400.0, 100.0)]);
+    fn old_beatmap_format_is_not_shifted() {
+        let replay = replay(vec![], &[(1090, 100.0, 100.0), (1590, 400.0, 100.0)]);
 
-        assert!(
-            samples(&replay, &beatmap(14, 4.0, 10.0, &JUMP))
-                .unwrap()
-                .is_empty()
-        );
         assert_eq!(
             samples(&replay, &beatmap(4, 4.0, 10.0, &JUMP))
                 .unwrap()
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn objects_revisited_within_the_stack_window_give_no_sample() {
+        let map = beatmap(
+            14,
+            4.0,
+            8.0,
+            &[
+                "100,100,1000,1,0",
+                "400,100,1200,1,0",
+                "100,100,1400,1,0",
+                "400,300,1600,1,0",
+            ],
+        );
+        let replay = replay(
+            vec![],
+            &[
+                (1000, 100.0, 100.0),
+                (1200, 400.0, 100.0),
+                (1400, 100.0, 100.0),
+                (1600, 400.0, 300.0),
+            ],
+        );
+
+        assert_eq!(samples(&replay, &map).unwrap().len(), 2);
     }
 
     #[test]
