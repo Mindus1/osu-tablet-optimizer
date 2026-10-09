@@ -775,3 +775,9 @@ git branch -vv | grep ': gone]' || true
 
 - Feature 7 (Setup): start from `default_data_dir()`; if it's missing, ask for the OTD folder and pass the pick through `resolve_data_dir`. Show `OtdSettings::is_supported()` as a warning, and say clearly when the chosen profile isn't absolute.
 - Feature 9 (Area page): `tablet_size(&profile.tablet)` drives the tablet outline, with a manual override in Setup when it's `None`. Name presets `oto-YYYY-MM-DD-{capped|full}` and add a suffix if that name exists (`write_preset` refuses overwrites). Tell users to refresh presets in OTD.
+- From the final review (deferred minors), for feature 9:
+  - Check `profile.absolute` before calling `write_preset`.
+  - Restrict any user-typed preset name to `[A-Za-z0-9 _-]`, since Windows reserved names like `NUL` and characters like `*?"<>|` pass today.
+  - Write presets via `to_vec_pretty` + `write_all`, removing the file on failure, so a failed write can't block that name.
+  - Linux "Artist Mode" is absolute but is flagged non-absolute (the path lacks "Absolute").
+- For feature 7: one malformed profile fails `load` for all profiles. Always show the resolved OTD data folder, since an old installed OTD may shadow a portable one.
