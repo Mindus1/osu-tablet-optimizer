@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::core::fit::{self, Mapping, Settings, Suggestion};
+use crate::core::history::Entry;
 use crate::core::hits::{self, Sample};
 use crate::core::library;
 
@@ -24,6 +25,8 @@ pub struct Sector {
 pub struct Report {
     pub analyzed: usize,
     pub skipped: Vec<(PathBuf, String)>,
+    // Each replay's own numbers, for the history; replays with too few jumps have none.
+    pub measured: Vec<(PathBuf, Entry)>,
     // Usable samples only, as (along, across) the move in circle radii; +along is overshoot,
     // +across is to the clockwise side.
     pub errors: Vec<(f64, f64)>,
@@ -38,10 +41,20 @@ pub fn analyze(
     settings: &Settings,
 ) -> Report {
     let mut replays = Vec::new();
+    let mut measured = Vec::new();
     let mut skipped = Vec::new();
     for path in paths {
         match hits::replay_samples(path, beatmaps) {
-            Ok(samples) => replays.push(samples),
+            Ok((header, samples)) => {
+                if let Some(metrics) = fit::measure(&samples, settings) {
+                    let entry = Entry {
+                        played_at_ms: header.played_at_ms,
+                        metrics,
+                    };
+                    measured.push((path.clone(), entry));
+                }
+                replays.push(samples);
+            }
             Err(error) => skipped.push((path.clone(), format!("{error:#}"))),
         }
     }
@@ -56,6 +69,7 @@ pub fn analyze(
     Report {
         analyzed: replays.len(),
         skipped,
+        measured,
         errors: usable.iter().map(aligned_error).collect(),
         sectors: sectors(&usable, 16, edge_stop),
         suggestion,
@@ -227,6 +241,7 @@ mod tests {
             report.skipped,
             [(path, "beatmap not found in the osu! library".to_string())]
         );
+        assert!(report.measured.is_empty());
         assert_eq!(report.suggestion, None);
     }
 }

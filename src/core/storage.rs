@@ -17,6 +17,13 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))
 }
 
+// Moves a file that can't be read out of the way, so saving a fresh one later keeps it.
+pub fn set_aside(path: &Path) -> Result<PathBuf> {
+    let aside = path.with_extension("json.bad");
+    fs::rename(path, &aside).with_context(|| format!("moving {} aside", path.display()))?;
+    Ok(aside)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -32,5 +39,16 @@ mod tests {
 
         assert_eq!(fs::read(&path).unwrap(), b"second");
         assert!(!path.with_extension("tmp").exists());
+    }
+
+    #[test]
+    fn unreadable_file_is_set_aside() {
+        let dir = TempDir::new("storage-aside");
+        let path = dir.write("config.json", "{ not json");
+
+        let aside = set_aside(&path).unwrap();
+
+        assert!(!path.exists());
+        assert_eq!(fs::read_to_string(aside).unwrap(), "{ not json");
     }
 }

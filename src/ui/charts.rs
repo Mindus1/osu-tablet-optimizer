@@ -1,6 +1,7 @@
 use iced::widget::canvas::{self, Frame, Geometry, LineDash, Path, Stroke, Text};
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme, mouse};
 use osu_tablet_optimizer::core::aim::{self, Sector};
+use osu_tablet_optimizer::core::history;
 
 // Errors within this many radii are drawn; the circle marks one radius (a hit).
 const SCATTER_RANGE: f32 = 3.0;
@@ -8,6 +9,19 @@ const SCATTER_RANGE: f32 = 3.0;
 const MAGNIFICATION: f64 = 5.0;
 // Largest outline radius in rings; the ring is sized so that it still fits the chart.
 const MAX_SCALE: f64 = 1.4;
+// Points and the area list share these, one per area in the order the areas were logged.
+const AREA_COLORS: [Color; 6] = [
+    Color::from_rgb(0.40, 0.65, 1.00),
+    Color::from_rgb(1.00, 0.60, 0.25),
+    Color::from_rgb(0.45, 0.85, 0.45),
+    Color::from_rgb(0.95, 0.40, 0.55),
+    Color::from_rgb(0.75, 0.55, 1.00),
+    Color::from_rgb(0.95, 0.85, 0.35),
+];
+const UNKNOWN_AREA: Color = Color::from_rgb(0.5, 0.5, 0.5);
+// Room on the left for the value labels, and around the points so edge ones show whole.
+const TREND_GUTTER: f32 = 64.0;
+const TREND_INSET: f32 = 4.0;
 
 pub struct Scatter<'a> {
     pub errors: &'a [(f64, f64)],
@@ -23,6 +37,20 @@ pub struct AreaPreview {
     pub current: [(f64, f64); 4],
     pub full: [(f64, f64); 4],
     pub capped: [(f64, f64); 4],
+}
+
+// One value per replay over time; values outside `range` sit on its edge.
+pub struct Trend {
+    pub points: Vec<history::Point>,
+    pub range: (f64, f64),
+    pub ideal: f64,
+    // Labels for the top and bottom of the range.
+    pub top: String,
+    pub bottom: String,
+}
+
+pub fn area_color(area: Option<usize>) -> Color {
+    area.map_or(UNKNOWN_AREA, |index| AREA_COLORS[index % AREA_COLORS.len()])
 }
 
 impl<Message> canvas::Program<Message> for Scatter<'_> {
@@ -223,6 +251,56 @@ impl<Message> canvas::Program<Message> for AreaPreview {
             },
         );
         frame.stroke(&outline(&self.capped), primary);
+        vec![frame.into_geometry()]
+    }
+}
+
+impl<Message> canvas::Program<Message> for Trend {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let (low, high) = self.range;
+        let height = bounds.height - 2.0 * TREND_INSET;
+        let y = |value: f64| {
+            TREND_INSET + ((high - value.clamp(low, high)) / (high - low)) as f32 * height
+        };
+        let first = self.points.first().map_or(0, |point| point.played_at_ms);
+        let last = self.points.last().map_or(0, |point| point.played_at_ms);
+        let span = (last - first).max(1) as f32;
+        let width = bounds.width - TREND_GUTTER - TREND_INSET;
+        let x = |ms: i64| TREND_GUTTER + (ms - first) as f32 / span * width;
+
+        frame.stroke(
+            &Path::line(
+                Point::new(TREND_GUTTER, y(self.ideal)),
+                Point::new(bounds.width, y(self.ideal)),
+            ),
+            Stroke::default()
+                .with_color(theme.extended_palette().background.strong.color)
+                .with_width(1.0),
+        );
+        for point in &self.points {
+            frame.fill_rectangle(
+                Point::new(x(point.played_at_ms) - 2.0, y(point.value) - 2.0),
+                Size::new(4.0, 4.0),
+                area_color(point.snapshot),
+            );
+        }
+        label(&mut frame, Point::new(0.0, 0.0), &self.top, theme);
+        label(
+            &mut frame,
+            Point::new(0.0, bounds.height - 16.0),
+            &self.bottom,
+            theme,
+        );
         vec![frame.into_geometry()]
     }
 }

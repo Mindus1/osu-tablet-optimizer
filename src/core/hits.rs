@@ -9,7 +9,7 @@ use rosu_map::section::hit_objects::HitObjectKind;
 use serde_json::Value;
 
 use crate::core::library;
-use crate::core::replay::{self, Frame, Mod, Replay};
+use crate::core::replay::{self, Frame, Header, Mod, Replay};
 
 const PLAYFIELD_WIDTH: f64 = 512.0;
 const PLAYFIELD_HEIGHT: f64 = 384.0;
@@ -61,7 +61,7 @@ struct Difficulty {
 pub fn replay_samples(
     replay_path: &Path,
     beatmaps: &HashMap<&str, library::Beatmap<'_>>,
-) -> Result<Vec<Sample>> {
+) -> Result<(Header, Vec<Sample>)> {
     let file =
         File::open(replay_path).with_context(|| format!("opening {}", replay_path.display()))?;
     let replay = replay::read_replay(&mut BufReader::new(file))?;
@@ -71,7 +71,8 @@ pub fn replay_samples(
         .context("beatmap not found in the osu! library")?;
     let beatmap = Beatmap::from_path(beatmap_path)
         .with_context(|| format!("reading {}", beatmap_path.display()))?;
-    samples(&replay, &beatmap)
+    let samples = samples(&replay, &beatmap)?;
+    Ok((replay.header, samples))
 }
 
 pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
@@ -603,7 +604,7 @@ mod tests {
             }
             *count += 1;
             match replay_samples(path, &beatmaps) {
-                Ok(samples) => {
+                Ok((_, samples)) => {
                     errors
                         .entry(hard_rock)
                         .or_default()

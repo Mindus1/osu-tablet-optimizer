@@ -48,7 +48,11 @@ pub enum Message {
 pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
     match message {
         Message::Run => return start(app),
-        Message::Done(analysis) => app.analysis.last = Some(analysis),
+        Message::Done(analysis) => {
+            app.history.record(&analysis.report.measured);
+            app.save_history();
+            app.analysis.last = Some(analysis);
+        }
         Message::Failed => {
             app.notice = Some("The analysis failed unexpectedly.".to_string());
         }
