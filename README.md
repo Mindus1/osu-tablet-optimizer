@@ -5,3 +5,11 @@ Analyzes your osu! replays (stable and lazer) and suggests a better [OpenTabletD
 Suggestions are exported as OTD presets, so your current settings stay untouched.
 
 Status: in development.
+
+## Build from source
+
+Requires [Rust](https://rustup.rs) (stable).
+
+```sh
+cargo run --release
+```
