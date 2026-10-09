@@ -35,7 +35,7 @@ impl Default for Settings {
 }
 
 // OpenTabletDriver's absolute mapping: tablet area (mm, degrees) onto a display area (px).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Mapping {
     pub area_width: f64,
     pub area_height: f64,
@@ -798,7 +798,11 @@ mod tests {
         let sessions: Vec<Vec<Sample>> = replays
             .iter()
             .take(300)
-            .filter_map(|(path, _)| hits::replay_samples(path, &beatmaps).ok())
+            .filter_map(|(path, _)| {
+                hits::replay_samples(path, &beatmaps)
+                    .ok()
+                    .map(|(_, samples)| samples)
+            })
             .collect();
         let current = Mapping {
             rotation: 0.0,

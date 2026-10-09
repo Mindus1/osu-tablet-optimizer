@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::core::fit::Mapping;
@@ -22,6 +23,8 @@ pub struct Profile {
 pub struct OtdSettings {
     pub revision: String,
     pub profiles: Vec<Profile>,
+    // When OpenTabletDriver last saved them (ms since the Unix epoch).
+    pub saved_at_ms: i64,
     json: Value,
 }
 
@@ -61,9 +64,13 @@ impl OtdSettings {
             .map(profile)
             .collect::<Result<_>>()
             .with_context(|| format!("reading profiles in {}", path.display()))?;
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .with_context(|| format!("reading {}", path.display()))?;
         Ok(OtdSettings {
             revision: json["Revision"].as_str().unwrap_or_default().to_string(),
             profiles,
+            saved_at_ms: DateTime::<Utc>::from(modified).timestamp_millis(),
             json,
         })
     }
@@ -310,6 +317,24 @@ mod tests {
         let (_dir, settings) = installed("otd-bom", &format!("\u{feff}{SETTINGS}"));
 
         assert_eq!(settings.profiles.len(), 2);
+    }
+
+    #[test]
+    fn settings_know_when_they_were_saved() {
+        let dir = TempDir::new("otd-saved");
+        let path = dir.write("settings.json", SETTINGS);
+        let saved = std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_700_000_000_000);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(saved)
+            .unwrap();
+
+        assert_eq!(
+            OtdSettings::load(&dir.0).unwrap().saved_at_ms,
+            1_700_000_000_000
+        );
     }
 
     #[test]

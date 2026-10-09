@@ -4,7 +4,7 @@ use std::sync::Arc;
 use iced::futures::{SinkExt, StreamExt};
 use iced::widget::{button, column, container, row, text};
 use iced::{Element, Fill, Subscription, Task, Theme, event, window};
-use osu_tablet_optimizer::core::config::{self, Config};
+use osu_tablet_optimizer::core::config::Config;
 use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::otd::OtdSettings;
 use osu_tablet_optimizer::core::storage;
@@ -257,7 +257,7 @@ impl App {
 
 // The unreadable file is moved aside so saving the defaults later doesn't destroy it.
 fn unreadable_config(error: &anyhow::Error) -> String {
-    match config_path().map(|path| config::set_aside(&path)) {
+    match config_path().map(|path| storage::set_aside(&path)) {
         Some(Ok(aside)) => format!(
             "Your settings could not be read ({error:#}); they were moved to {} and defaults are used.",
             aside.display()
