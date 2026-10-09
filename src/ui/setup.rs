@@ -145,7 +145,10 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
             app.reload_otd();
         }
         Message::OsuFolderPicked(None) | Message::OtdFolderPicked(None) => return Task::none(),
-        Message::Profile(profile) => app.config.profile = profile.index,
+        Message::Profile(profile) => {
+            app.config.profile = profile.index;
+            app.reload_otd();
+        }
         Message::Players(players) => {
             app.config.players = players
                 .split(',')
@@ -154,13 +157,13 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
                 .map(str::to_string)
                 .collect();
             app.setup.players = players;
-            app.replays.refresh(&app.library, &app.config);
+            app.replays.refresh(&app.library, &app.config, &app.history);
         }
         Message::DetectPlayer => {
             if let Some(player) = app.library.most_frequent_player() {
                 app.config.players = vec![player.to_string()];
                 app.setup.players = player.to_string();
-                app.replays.refresh(&app.library, &app.config);
+                app.replays.refresh(&app.library, &app.config, &app.history);
             }
         }
         Message::Number(number, value) => {
@@ -360,7 +363,7 @@ fn rescan(app: &mut App) -> Task<app::Message> {
     Task::done(app::Message::Rescan)
 }
 
-fn format_number(value: f64) -> String {
+pub fn format_number(value: f64) -> String {
     let rounded = (value * 1000.0).round() / 1000.0;
     rounded.to_string()
 }

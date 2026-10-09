@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local, Utc};
@@ -7,18 +8,22 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, Task};
 use osu_tablet_optimizer::core::config::Config;
+use osu_tablet_optimizer::core::history::History;
 use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::listing::{self, Period, Row};
 
 use crate::app::{self, App, Page};
-use crate::ui::analysis;
+use crate::ui::{analysis, history};
 
 // ponytail: a plain column of rows; switch to a virtualized list if 500 rows feel slow.
 const MAX_ROWS: usize = 500;
+const AREA_WIDTH: f32 = 160.0;
 
 #[derive(Debug, Default)]
 pub struct State {
     period: Period,
+    // None: every area.
+    area: Option<usize>,
     search: String,
     rows: Vec<Row>,
     added: Vec<Row>,
@@ -28,6 +33,8 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum Message {
     Period(Period),
+    Area(Option<usize>),
+    Assign(Option<usize>),
     Search(String),
     Toggle(PathBuf, bool),
     ToggleAll(bool),
@@ -36,10 +43,27 @@ pub enum Message {
     Analyze,
 }
 
+// A pick-list entry for an area; None stands for "every area" or "by date".
+#[derive(Debug, Clone, PartialEq)]
+struct AreaChoice {
+    area: Option<usize>,
+    label: String,
+}
+
+impl fmt::Display for AreaChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
 impl State {
-    pub fn refresh(&mut self, library: &Library, config: &Config) {
+    pub fn refresh(&mut self, library: &Library, config: &Config, history: &History) {
         let now_ms = Utc::now().timestamp_millis();
         self.rows = listing::rows(library, &config.players, self.period, &self.search, now_ms);
+        if let Some(area) = self.area {
+            self.rows
+                .retain(|row| history.snapshot_of(&row.path, row.played_at_ms) == Some(area));
+        }
     }
 
     fn shown(&self) -> impl Iterator<Item = &Row> {
@@ -52,11 +76,20 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
     match message {
         Message::Period(period) => {
             state.period = period;
-            state.refresh(&app.library, &app.config);
+            state.refresh(&app.library, &app.config, &app.history);
+        }
+        Message::Area(area) => {
+            state.area = area;
+            state.refresh(&app.library, &app.config, &app.history);
+        }
+        Message::Assign(area) => {
+            app.history.assign(state.selected.iter().cloned(), area);
+            app.save_history();
+            app.replays.refresh(&app.library, &app.config, &app.history);
         }
         Message::Search(search) => {
             state.search = search;
-            state.refresh(&app.library, &app.config);
+            state.refresh(&app.library, &app.config, &app.history);
         }
         Message::Toggle(path, on) => select(&mut state.selected, path, on),
         Message::ToggleAll(on) => {
@@ -113,9 +146,10 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         pick_list(Period::ALL, Some(state.period), |period| {
             app::Message::Replays(Message::Period(period))
         }),
+        area_filter(app),
         text_input("Search maps", &state.search)
             .on_input(|search| app::Message::Replays(Message::Search(search)))
-            .width(260),
+            .width(200),
         button("Add files…").on_press(app::Message::Replays(Message::AddFiles)),
         scan_status(app),
         space::horizontal(),
@@ -131,15 +165,19 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         text("Played").width(140),
         text("Player").width(140),
         text("Map").width(Fill),
+        text("Area").width(AREA_WIDTH),
         text("Mods").width(80),
         text("Accuracy").width(80),
     ]
     .spacing(12);
-    let rows = column(
-        state
-            .shown()
-            .map(|row| row_view(row, state.selected.contains(&row.path))),
-    )
+    let rows = column(state.shown().map(|row| {
+        let area = app.history.snapshot_of(&row.path, row.played_at_ms);
+        row_view(
+            row,
+            history::area_label(&app.history, area),
+            state.selected.contains(&row.path),
+        )
+    }))
     .spacing(4);
     let total = state.added.len() + state.rows.len();
     let footer = if total > MAX_ROWS {
@@ -148,17 +186,26 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
         format!("{total} replays · drop .osr files anywhere to add them")
     };
 
+    let assign = (!state.selected.is_empty() && !app.history.snapshots.is_empty()).then(|| {
+        pick_list(
+            area_choices(&app.history, "By date"),
+            None::<AreaChoice>,
+            |choice| app::Message::Replays(Message::Assign(choice.area)),
+        )
+        .placeholder("Assign selected to area…")
+    });
+
     column![
         toolbar,
         header,
         scrollable(rows).height(Fill),
-        text(footer).size(14)
+        row![text(footer).size(14), space::horizontal(), assign].align_y(Center)
     ]
     .spacing(12)
     .into()
 }
 
-fn row_view(row: &Row, selected: bool) -> Element<'_, app::Message> {
+fn row_view(row: &Row, area: String, selected: bool) -> Element<'_, app::Message> {
     let path = row.path.clone();
     iced::widget::row![
         checkbox(selected)
@@ -166,11 +213,37 @@ fn row_view(row: &Row, selected: bool) -> Element<'_, app::Message> {
         text(played_at(row.played_at_ms)).width(140),
         text(&row.player).width(140),
         text(&row.title).width(Fill),
+        text(area).width(AREA_WIDTH),
         text(&row.mods).width(80),
         text(format!("{:.2}%", row.accuracy * 100.0)).width(80),
     ]
     .spacing(12)
     .into()
+}
+
+fn area_filter(app: &App) -> Element<'_, app::Message> {
+    let choices = area_choices(&app.history, "All areas");
+    let selected = choices
+        .iter()
+        .find(|choice| choice.area == app.replays.area)
+        .cloned();
+    pick_list(choices, selected, |choice| {
+        app::Message::Replays(Message::Area(choice.area))
+    })
+    .into()
+}
+
+fn area_choices(history: &History, none: &str) -> Vec<AreaChoice> {
+    let areas = (0..history.snapshots.len()).map(|index| AreaChoice {
+        area: Some(index),
+        label: history::area_label(history, Some(index)),
+    });
+    std::iter::once(AreaChoice {
+        area: None,
+        label: none.to_string(),
+    })
+    .chain(areas)
+    .collect()
 }
 
 fn scan_status(app: &App) -> Element<'_, app::Message> {
@@ -187,7 +260,7 @@ fn scan_status(app: &App) -> Element<'_, app::Message> {
     }
 }
 
-fn played_at(ms: i64) -> String {
+pub fn played_at(ms: i64) -> String {
     DateTime::from_timestamp_millis(ms)
         .map(|time| {
             time.with_timezone(&Local)
