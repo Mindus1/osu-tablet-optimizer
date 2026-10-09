@@ -15,11 +15,11 @@ use crate::ui::{analysis, history, style};
 
 // ponytail: a plain column of rows; switch to a virtualized list if 500 rows feel slow.
 const MAX_ROWS: usize = 500;
-const PLAYED_WIDTH: f32 = 130.0;
-const PLAYER_WIDTH: f32 = 130.0;
-const AREA_WIDTH: f32 = 170.0;
-const MODS_WIDTH: f32 = 70.0;
-const ACCURACY_WIDTH: f32 = 76.0;
+const PLAYED_WIDTH: f32 = 120.0;
+const PLAYER_WIDTH: f32 = 120.0;
+const AREA_WIDTH: f32 = 150.0;
+const MODS_WIDTH: f32 = 64.0;
+const ACCURACY_WIDTH: f32 = 72.0;
 
 #[derive(Debug, Default)]
 pub struct State {
