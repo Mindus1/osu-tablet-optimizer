@@ -930,6 +930,6 @@ git branch -vv | grep ': gone]' || true
 
 ## Notes for later features
 
-- Feature 4 (hits): when a beatmap's `osu file format` version is below 5, add 24 ms to every frame time. That's lazer's `EARLY_VERSION_TIMING_OFFSET`, which it applies while decoding.
+- Feature 4 (hits): no 24 ms shift is needed for beatmap format < 5. lazer adds `EARLY_VERSION_TIMING_OFFSET` to both the objects and the frames, so the raw times already line up (corrected in feature 4's final review).
 - Feature 4: frames at (256, −500) are placeholders that stable writes before play starts. They never carry key presses, so press matching ignores them naturally.
 - The fixture "lazer" replay is a stable play re-exported by lazer (identical frames). A replay actually played in lazer would cover lazer's own frame timing.
