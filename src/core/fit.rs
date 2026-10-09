@@ -4,6 +4,8 @@ use crate::core::hits::Sample;
 
 // ponytail: fixed statistics knobs; expose them in Setup if users ask.
 const MIN_SAMPLES: usize = 50;
+// Fewer usable jumps make one replay's numbers too noisy to plot.
+const MIN_REPLAY_SAMPLES: usize = 20;
 // The bootstrap resamples whole replays (aim varies between sessions), which needs a few of them.
 const MIN_REPLAYS: usize = 5;
 const BOOTSTRAP_ROUNDS: usize = 200;
@@ -98,6 +100,17 @@ pub struct Suggestion {
     pub capped: Mapping,
 }
 
+// One replay's own numbers, for the history.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Metrics {
+    pub samples: usize,
+    pub overshoot: f64,
+    pub rotation_bias: f64,
+    pub axis_ratio: f64,
+    // Root mean square distance from the circle's center to the press, in circle radii.
+    pub error: f64,
+}
+
 // Least-squares sums for actual = gain · intended + edge_stop · direction(intended). The
 // edge-stop term soaks up stopping at the circle's edge, which does not grow with jump distance;
 // a wrong area size does, so the two separate when jump distances vary.
@@ -143,6 +156,14 @@ impl Normal {
     fn fit(&self) -> Option<(Mat2, f64)> {
         let [b00, b01, b10, b11, edge_stop] = solve(self.a, self.b)?;
         Some(([[b00, b01], [b10, b11]], edge_stop))
+    }
+
+    // The gain alone: the first four unknowns without the edge-stop term.
+    fn gain(&self) -> Option<Mat2> {
+        let a = std::array::from_fn(|i| std::array::from_fn(|j| self.a[i][j]));
+        let b = std::array::from_fn(|i| self.b[i]);
+        let [b00, b01, b10, b11] = solve::<4>(a, b)?;
+        Some([[b00, b01], [b10, b11]])
     }
 }
 
@@ -235,6 +256,48 @@ pub fn suggest(
         full,
         capped,
     })
+}
+
+// One replay's numbers, from the gain alone: a single map's jumps are often too alike in length to
+// tell a wrong area size from stopping at the circle's edge, so edge stopping shows up as a little
+// undershoot here. None when the replay has too few jumps or a number isn't finite (JSON can't
+// hold it).
+pub fn measure(samples: &[Sample], settings: &Settings) -> Option<Metrics> {
+    let usable: Vec<Sample> = samples
+        .iter()
+        .copied()
+        .filter(|sample| is_usable(sample, settings))
+        .collect();
+    if usable.len() < MIN_REPLAY_SAMPLES {
+        return None;
+    }
+    let gain = Normal::of(&usable).gain()?;
+    let squared: f64 = usable
+        .iter()
+        .map(|sample| {
+            let (ex, ey) = (
+                sample.actual.0 - sample.intended.0,
+                sample.actual.1 - sample.intended.1,
+            );
+            (ex * ex + ey * ey) / (sample.radius * sample.radius)
+        })
+        .sum();
+    let metrics = Metrics {
+        samples: usable.len(),
+        overshoot: overshoot(&gain),
+        rotation_bias: rotation_bias(&gain),
+        axis_ratio: axis_ratio(&gain),
+        error: (squared / usable.len() as f64).sqrt(),
+    };
+    [
+        metrics.overshoot,
+        metrics.rotation_bias,
+        metrics.axis_ratio,
+        metrics.error,
+    ]
+    .iter()
+    .all(|value| value.is_finite())
+    .then_some(metrics)
 }
 
 fn is_valid(mapping: &Mapping) -> bool {
@@ -673,6 +736,50 @@ mod tests {
             .collect();
 
         assert!(suggest(&replays(&samples), MAPPING, &Settings::default()).is_none());
+    }
+
+    #[test]
+    fn measure_recovers_one_replays_gain() {
+        let gain = rotation(2.0).map(|row| row.map(|x| x * 1.05));
+
+        let metrics = measure(&synthetic(gain, 0.0, 2.0), &Settings::default()).unwrap();
+
+        assert_eq!(metrics.samples, 480);
+        assert!((metrics.overshoot - 0.05).abs() < 0.002, "{metrics:?}");
+        assert!((metrics.rotation_bias - 2.0).abs() < 0.05, "{metrics:?}");
+        assert!((metrics.axis_ratio - 1.0).abs() < 0.002, "{metrics:?}");
+    }
+
+    #[test]
+    fn measure_reports_the_distance_from_the_center_in_radii() {
+        let samples: Vec<Sample> = synthetic(rotation(0.0), 0.0, 0.0)
+            .into_iter()
+            .map(|sample| Sample {
+                actual: (sample.intended.0 + 15.0, sample.intended.1),
+                ..sample
+            })
+            .collect();
+
+        let metrics = measure(&samples, &Settings::default()).unwrap();
+
+        assert!((metrics.error - 0.5).abs() < 1e-9, "{metrics:?}");
+        assert!(metrics.overshoot.abs() < 1e-9, "{metrics:?}");
+    }
+
+    #[test]
+    fn measure_needs_enough_jumps() {
+        let samples = synthetic(rotation(0.0), 0.0, 1.0);
+
+        assert!(measure(&samples[..MIN_REPLAY_SAMPLES - 1], &Settings::default()).is_none());
+        assert!(measure(&samples[..MIN_REPLAY_SAMPLES], &Settings::default()).is_some());
+    }
+
+    #[test]
+    fn measure_rejects_numbers_json_cannot_hold() {
+        // No vertical movement at all: the vertical gain is zero, the axis ratio infinite.
+        let samples = synthetic([[1.0, 0.0], [0.0, 0.0]], 0.0, 0.0);
+
+        assert!(measure(&samples, &Settings::default()).is_none());
     }
 
     #[test]
