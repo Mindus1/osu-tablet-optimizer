@@ -9,7 +9,7 @@ use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::otd::OtdSettings;
 use osu_tablet_optimizer::core::storage;
 
-use crate::ui::{replays, setup};
+use crate::ui::{analysis, replays, setup};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Page {
@@ -49,6 +49,7 @@ pub enum Message {
     FileDropped(PathBuf),
     Replays(replays::Message),
     Setup(setup::Message),
+    Analysis(analysis::Message),
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +75,7 @@ pub struct App {
     pub otd: Result<OtdSettings, String>,
     pub replays: replays::State,
     pub setup: setup::State,
+    pub analysis: analysis::State,
     pub notice: Option<String>,
 }
 
@@ -99,6 +101,7 @@ impl App {
             scanning: Some((0, 0)),
             rescan_pending: false,
             replays: replays::State::default(),
+            analysis: analysis::State::default(),
             notice,
         };
         app.reload_otd();
@@ -144,6 +147,7 @@ impl App {
             Message::FileDropped(path) => replays::add_files(self, vec![path]),
             Message::Replays(message) => return replays::update(self, message),
             Message::Setup(message) => return setup::update(self, message),
+            Message::Analysis(message) => return analysis::update(self, message),
         }
         Task::none()
     }
@@ -165,6 +169,7 @@ impl App {
         let page = match self.page {
             Page::Replays => replays::view(self),
             Page::Setup => setup::view(self),
+            Page::Analysis => analysis::view(self),
             other => text(other.label()).size(24).into(),
         };
         let mut content = column![page].spacing(8);

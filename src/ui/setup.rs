@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use iced::widget::{button, column, pick_list, row, scrollable, text, text_input};
 use iced::{Center, Element, Task};
 use osu_tablet_optimizer::core::config::Config;
-use osu_tablet_optimizer::core::{library, tablets};
+use osu_tablet_optimizer::core::{library, otd, tablets};
 
 use crate::app::{self, App};
 
@@ -344,6 +344,10 @@ fn number_input(app: &App, number: Number) -> Element<'_, app::Message> {
 
 fn heading(label: &str) -> Element<'_, app::Message> {
     text(label).size(20).into()
+}
+
+pub fn profile(app: &App) -> Option<&otd::Profile> {
+    app.otd.as_ref().ok()?.profiles.get(app.config.profile)
 }
 
 // The size in use: the user's own entry first, then the bundled table.
