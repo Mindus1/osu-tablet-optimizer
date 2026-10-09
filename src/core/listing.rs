@@ -62,7 +62,7 @@ pub fn rows(
     let beatmaps = library.beatmaps_by_md5();
     let mut rows: Vec<Row> = library
         .replays()
-        .filter(|(_, header)| header.mode == 0 && is_played_by(header, players))
+        .filter(|(_, header)| header.is_standard() && is_played_by(header, players))
         .map(|(path, header)| row(path, header, &beatmaps))
         .collect();
     rows.sort_by_key(|row| std::cmp::Reverse(row.played_at_ms));
@@ -84,7 +84,7 @@ pub fn row_for_file(path: &Path, beatmaps: &HashMap<&str, library::Beatmap<'_>>)
     let header = replay::read_header(&mut BufReader::new(file))
         .with_context(|| format!("reading {}", path.display()))?;
     ensure!(
-        header.mode == 0,
+        header.is_standard(),
         "{} is not an osu!standard replay",
         path.display()
     );

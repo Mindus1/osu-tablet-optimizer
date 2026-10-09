@@ -50,6 +50,12 @@ pub struct Header {
     pub played_at_ms: i64,
 }
 
+impl Header {
+    pub fn is_standard(&self) -> bool {
+        self.mode == 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Frame {
     pub time: i64,

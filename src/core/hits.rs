@@ -28,7 +28,7 @@ const SUPPORTED_MODS: [&str; 31] = [
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sample {
-    // Object centre minus the cursor at the previous hit: where the player meant to move.
+    // Object center minus the cursor at the previous hit: where the player meant to move.
     pub intended: (f64, f64),
     // Cursor at this press minus the cursor at the previous hit: where they actually moved.
     pub actual: (f64, f64),
@@ -75,7 +75,7 @@ pub fn replay_samples(
 }
 
 pub fn samples(replay: &Replay, beatmap: &Beatmap) -> Result<Vec<Sample>> {
-    ensure!(replay.header.mode == 0, "not an osu!standard replay");
+    ensure!(replay.header.is_standard(), "not an osu!standard replay");
     let difficulty = difficulty(beatmap, &replay.mods)?;
     let radius = 54.4 - 4.48 * difficulty.circle_size;
     let window = (200.0 - 10.0 * difficulty.overall_difficulty).floor() - 0.5;
@@ -588,7 +588,7 @@ mod tests {
         let beatmaps = library.beatmaps_by_md5();
         let mut replays: Vec<_> = library
             .replays()
-            .filter(|(_, header)| header.mode == 0)
+            .filter(|(_, header)| header.is_standard())
             .collect();
         replays.sort_by_key(|(_, header)| std::cmp::Reverse(header.played_at_ms));
 

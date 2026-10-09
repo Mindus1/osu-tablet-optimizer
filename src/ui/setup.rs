@@ -8,6 +8,9 @@ use osu_tablet_optimizer::core::{library, otd, tablets};
 
 use crate::app::{self, App};
 
+pub const RELATIVE_MODE: &str =
+    "This profile is not in absolute mode; area suggestions need absolute mode.";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Number {
     MinJump,
@@ -28,8 +31,8 @@ impl Number {
 
     fn label(self) -> &'static str {
         match self {
-            Number::MinJump => "Shortest jump analysed (circle radii)",
-            Number::MaxError => "Largest miss still analysed (circle radii)",
+            Number::MinJump => "Shortest jump analyzed (circle radii)",
+            Number::MaxError => "Largest miss still analyzed (circle radii)",
             Number::SizeStep => "Largest size change per step (%)",
             Number::RotationStep => "Largest rotation change per step (°)",
             Number::TabletWidth => "Width (mm)",
@@ -269,14 +272,8 @@ fn otd_section(app: &App) -> Element<'_, app::Message> {
             section = section.push(pick_list(profiles, selected, |profile| {
                 app::Message::Setup(Message::Profile(profile))
             }));
-            if settings
-                .profiles
-                .get(app.config.profile)
-                .is_some_and(|profile| !profile.absolute)
-            {
-                section = section.push(text(
-                    "This profile is not in absolute mode; area suggestions need absolute mode.",
-                ));
+            if profile(app).is_some_and(|profile| !profile.absolute) {
+                section = section.push(text(RELATIVE_MODE));
             }
         }
     }
@@ -284,12 +281,7 @@ fn otd_section(app: &App) -> Element<'_, app::Message> {
 }
 
 fn tablet_section(app: &App) -> Element<'_, app::Message> {
-    let tablet = app
-        .otd
-        .as_ref()
-        .ok()
-        .and_then(|settings| settings.profiles.get(app.config.profile))
-        .map(|profile| profile.tablet.as_str());
+    let tablet = profile(app).map(|profile| profile.tablet.as_str());
     let line = match (
         tablet,
         app.config.tablet_size,
@@ -352,10 +344,9 @@ pub fn profile(app: &App) -> Option<&otd::Profile> {
 
 // The size in use: the user's own entry first, then the bundled table.
 pub fn tablet_size(app: &App) -> Option<(f64, f64)> {
-    app.config.tablet_size.or_else(|| {
-        let settings = app.otd.as_ref().ok()?;
-        tablets::tablet_size(&settings.profiles.get(app.config.profile)?.tablet)
-    })
+    app.config
+        .tablet_size
+        .or_else(|| tablets::tablet_size(&profile(app)?.tablet))
 }
 
 fn pick_folder(picked: fn(Option<PathBuf>) -> Message) -> Task<app::Message> {

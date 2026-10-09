@@ -685,7 +685,7 @@ mod tests {
         let beatmaps = library.beatmaps_by_md5();
         let mut replays: Vec<_> = library
             .replays()
-            .filter(|(_, header)| header.mode == 0)
+            .filter(|(_, header)| header.is_standard())
             .collect();
         replays.sort_by_key(|(_, header)| std::cmp::Reverse(header.played_at_ms));
         let sessions: Vec<Vec<Sample>> = replays

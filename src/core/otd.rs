@@ -14,7 +14,7 @@ pub struct Profile {
     pub tablet: String,
     pub absolute: bool,
     pub mapping: Mapping,
-    // Area centre in mm from the tablet's top-left corner.
+    // Area center in mm from the tablet's top-left corner.
     pub center: (f64, f64),
 }
 
@@ -73,9 +73,9 @@ impl OtdSettings {
     }
 
     // Writes a copy of the settings with the profile's area replaced, as an OTD preset. The
-    // centre is kept, moved just enough to stay on the tablet when its size is known. Existing
+    // center is kept, moved just enough to stay on the tablet when its size is known. Existing
     // presets are never overwritten.
-    pub fn write_preset(
+    fn write_preset(
         &self,
         data_dir: &Path,
         index: usize,
@@ -138,7 +138,7 @@ impl OtdSettings {
 pub fn export_preset(
     data_dir: &Path,
     index: usize,
-    analysed: &Mapping,
+    analyzed: &Mapping,
     mapping: Mapping,
     tablet_size: Option<(f64, f64)>,
     base: &str,
@@ -149,8 +149,8 @@ pub fn export_preset(
         .get(index)
         .context("no such OTD profile")?;
     ensure!(
-        profile.mapping == *analysed,
-        "OpenTabletDriver's area changed since the analysis; analyse again"
+        profile.mapping == *analyzed,
+        "OpenTabletDriver's area changed since the analysis; analyze again"
     );
     let presets = data_dir.join("Presets");
     let mut name = base.to_string();
@@ -163,7 +163,7 @@ pub fn export_preset(
     settings.write_preset(data_dir, index, mapping, tablet_size, &name)
 }
 
-// Where a preset puts the area: the profile's centre, moved just enough to keep it on the tablet
+// Where a preset puts the area: the profile's center, moved just enough to keep it on the tablet
 // when the tablet's size is known.
 pub fn preset_center(
     profile: &Profile,
@@ -209,8 +209,8 @@ fn profile(value: &Value) -> Result<Profile> {
     })
 }
 
-// Moves the centre the least so the rotated area's bounding box stays on the tablet; an area
-// larger than the tablet is centred.
+// Moves the center the least so the rotated area's bounding box stays on the tablet; an area
+// larger than the tablet is centered.
 fn clamp_center(center: (f64, f64), mapping: &Mapping, tablet: (f64, f64)) -> (f64, f64) {
     let (sin, cos) = mapping.rotation.to_radians().sin_cos();
     let half_x = (mapping.area_width * cos.abs() + mapping.area_height * sin.abs()) / 2.0;

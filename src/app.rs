@@ -17,25 +17,17 @@ pub enum Page {
     Replays,
     Analysis,
     Area,
-    History,
     Setup,
 }
 
 impl Page {
-    const ALL: [Page; 5] = [
-        Page::Replays,
-        Page::Analysis,
-        Page::Area,
-        Page::History,
-        Page::Setup,
-    ];
+    const ALL: [Page; 4] = [Page::Replays, Page::Analysis, Page::Area, Page::Setup];
 
     fn label(self) -> &'static str {
         match self {
             Page::Replays => "Replays",
             Page::Analysis => "Analysis",
             Page::Area => "Area",
-            Page::History => "History",
             Page::Setup => "Setup",
         }
     }
@@ -175,7 +167,6 @@ impl App {
             Page::Setup => setup::view(self),
             Page::Analysis => analysis::view(self),
             Page::Area => area::view(self),
-            other => text(other.label()).size(24).into(),
         };
         let mut content = column![page].spacing(8);
         if let Some(notice) = &self.notice {
