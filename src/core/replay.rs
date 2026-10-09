@@ -145,8 +145,7 @@ fn parse_frames(text: &str) -> Result<Vec<Frame>> {
     Ok(frames)
 }
 
-fn legacy_mods(bits: u32) -> Vec<Mod> {
-    let mut bits = bits;
+fn legacy_mods(mut bits: u32) -> Vec<Mod> {
     if bits & NIGHTCORE != 0 {
         bits &= !DOUBLE_TIME;
     }
