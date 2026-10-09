@@ -1,10 +1,40 @@
 use std::io::Read;
 
 use anyhow::{Context, Result, bail, ensure};
+use serde::Deserialize;
+use serde_json::{Map, Value};
 
+// From this version on, lazer appends a JSON score-info block that holds the full mod list.
+const FIRST_LAZER_SCORE_INFO_VERSION: i32 = 30_000_001;
 const TICKS_AT_UNIX_EPOCH: i64 = 621_355_968_000_000_000;
 const TICKS_PER_MS: i64 = 10_000;
 const SEED_FRAME_DELTA: &str = "-12345";
+
+const DOUBLE_TIME: u32 = 1 << 6;
+const NIGHTCORE: u32 = 1 << 9;
+const SUDDEN_DEATH: u32 = 1 << 5;
+const PERFECT: u32 = 1 << 14;
+const LEGACY_MODS: [(u32, &str); 19] = [
+    (1 << 0, "NF"),
+    (1 << 1, "EZ"),
+    (1 << 2, "TD"),
+    (1 << 3, "HD"),
+    (1 << 4, "HR"),
+    (SUDDEN_DEATH, "SD"),
+    (DOUBLE_TIME, "DT"),
+    (1 << 7, "RX"),
+    (1 << 8, "HT"),
+    (NIGHTCORE, "NC"),
+    (1 << 10, "FL"),
+    (1 << 11, "AT"),
+    (1 << 12, "SO"),
+    (1 << 13, "AP"),
+    (PERFECT, "PF"),
+    (1 << 22, "CN"),
+    (1 << 23, "TP"),
+    (1 << 29, "SV2"),
+    (1 << 30, "MR"),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
@@ -28,10 +58,18 @@ pub struct Frame {
     pub keys: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Mod {
+    pub acronym: String,
+    #[serde(default)]
+    pub settings: Map<String, Value>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Replay {
     pub header: Header,
     pub frames: Vec<Frame>,
+    pub mods: Vec<Mod>,
 }
 
 pub fn read_header(r: &mut impl Read) -> Result<Header> {
@@ -71,8 +109,19 @@ pub fn read_replay(r: &mut impl Read) -> Result<Replay> {
     let header = read_header(r).context("reading replay header")?;
     let data = read_byte_array(r).context("reading replay data")?;
     let frames = parse_frames(&decompress(&data).context("decompressing replay data")?)?;
+    let mods = if header.version >= FIRST_LAZER_SCORE_INFO_VERSION {
+        let _online_id = read_i64(r)?;
+        let info = read_byte_array(r).context("reading lazer score info")?;
+        lazer_mods(&decompress(&info).context("decompressing lazer score info")?)?
+    } else {
+        legacy_mods(header.legacy_mods)
+    };
 
-    Ok(Replay { header, frames })
+    Ok(Replay {
+        header,
+        frames,
+        mods,
+    })
 }
 
 fn parse_frames(text: &str) -> Result<Vec<Frame>> {
@@ -94,6 +143,43 @@ fn parse_frames(text: &str) -> Result<Vec<Frame>> {
         });
     }
     Ok(frames)
+}
+
+fn legacy_mods(bits: u32) -> Vec<Mod> {
+    let mut bits = bits;
+    if bits & NIGHTCORE != 0 {
+        bits &= !DOUBLE_TIME;
+    }
+    if bits & PERFECT != 0 {
+        bits &= !SUDDEN_DEATH;
+    }
+    (0..32)
+        .map(|i| 1u32 << i)
+        .filter(|bit| bits & bit != 0)
+        .map(|bit| {
+            let acronym = LEGACY_MODS
+                .iter()
+                .find(|(known, _)| *known == bit)
+                .map_or_else(
+                    || format!("bit{}", bit.trailing_zeros()),
+                    |(_, acronym)| acronym.to_string(),
+                );
+            Mod {
+                acronym,
+                settings: Map::new(),
+            }
+        })
+        .collect()
+}
+
+fn lazer_mods(json: &str) -> Result<Vec<Mod>> {
+    #[derive(Deserialize)]
+    struct ScoreInfo {
+        #[serde(default)]
+        mods: Vec<Mod>,
+    }
+    let info: ScoreInfo = serde_json::from_str(json).context("parsing lazer score info")?;
+    Ok(info.mods)
 }
 
 fn decompress(data: &[u8]) -> Result<String> {
@@ -168,6 +254,7 @@ mod tests {
     use super::*;
 
     const STABLE_VERSION: i32 = 20_250_107;
+    const LAZER_VERSION: i32 = 30_000_017;
 
     struct Osr<'a> {
         version: i32,
@@ -252,6 +339,10 @@ mod tests {
 
     fn parse(osr: Osr) -> Result<Replay> {
         read_replay(&mut osr.bytes().as_slice())
+    }
+
+    fn acronyms(replay: &Replay) -> Vec<&str> {
+        replay.mods.iter().map(|m| m.acronym.as_str()).collect()
     }
 
     #[test]
@@ -435,6 +526,83 @@ mod tests {
             assert_eq!(header.beatmap_md5.len(), 32);
             assert!(replay.frames.len() > 100, "{}", path.display());
             assert!(replay.frames.last().unwrap().time > 0);
+        }
+    }
+
+    #[test]
+    fn legacy_mods_drop_implied_bits() {
+        let osr = Osr {
+            legacy_mods: DOUBLE_TIME | NIGHTCORE | (1 << 3) | (1 << 4) | SUDDEN_DEATH | PERFECT,
+            ..Osr::default()
+        };
+
+        assert_eq!(acronyms(&parse(osr).unwrap()), ["HD", "HR", "NC", "PF"]);
+    }
+
+    #[test]
+    fn unknown_legacy_bits_are_kept() {
+        let osr = Osr {
+            legacy_mods: 1 << 15,
+            ..Osr::default()
+        };
+
+        assert_eq!(acronyms(&parse(osr).unwrap()), ["bit15"]);
+    }
+
+    #[test]
+    fn lazer_score_info_mods_replace_legacy_mods() {
+        let osr = Osr {
+            version: LAZER_VERSION,
+            legacy_mods: 1 << 4,
+            score_info: Some(
+                r#"{"online_id":1,"mods":[{"acronym":"HR"},{"acronym":"MR","settings":{"reflection":"1"}}]}"#,
+            ),
+            ..Osr::default()
+        };
+
+        let replay = parse(osr).unwrap();
+
+        assert_eq!(acronyms(&replay), ["HR", "MR"]);
+        assert_eq!(replay.mods[1].settings["reflection"], "1");
+    }
+
+    #[test]
+    fn lazer_score_info_without_mods_gives_no_mods() {
+        let osr = Osr {
+            version: LAZER_VERSION,
+            legacy_mods: 1 << 4,
+            score_info: Some(r#"{"online_id":1,"rank":"A"}"#),
+            ..Osr::default()
+        };
+
+        assert!(parse(osr).unwrap().mods.is_empty());
+    }
+
+    #[test]
+    fn first_lazer_version_without_score_info_uses_legacy_mods() {
+        let osr = Osr {
+            version: 30_000_000,
+            legacy_mods: 1 << 4,
+            ..Osr::default()
+        };
+
+        assert_eq!(acronyms(&parse(osr).unwrap()), ["HR"]);
+    }
+
+    #[test]
+    fn truncated_replay_is_an_error() {
+        let bytes = Osr {
+            version: LAZER_VERSION,
+            score_info: Some(r#"{"mods":[]}"#),
+            ..Osr::default()
+        }
+        .bytes();
+
+        for len in 0..bytes.len() {
+            assert!(
+                read_replay(&mut &bytes[..len]).is_err(),
+                "prefix {len} parsed"
+            );
         }
     }
 }
