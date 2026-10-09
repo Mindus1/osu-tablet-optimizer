@@ -1,3 +1,4 @@
+pub mod aim;
 pub mod config;
 pub mod fit;
 pub mod hits;

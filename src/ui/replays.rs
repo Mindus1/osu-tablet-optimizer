@@ -11,6 +11,7 @@ use osu_tablet_optimizer::core::library::Library;
 use osu_tablet_optimizer::core::listing::{self, Period, Row};
 
 use crate::app::{self, App, Page};
+use crate::ui::analysis;
 
 // ponytail: a plain column of rows; switch to a virtualized list if 500 rows feel slow.
 const MAX_ROWS: usize = 500;
@@ -78,7 +79,10 @@ pub fn update(app: &mut App, message: Message) -> Task<app::Message> {
             });
         }
         Message::FilesPicked(paths) => add_files(app, paths),
-        Message::Analyze => app.page = Page::Analysis,
+        Message::Analyze => {
+            app.page = Page::Analysis;
+            return analysis::start(app);
+        }
     }
     Task::none()
 }

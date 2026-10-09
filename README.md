@@ -4,7 +4,7 @@ Analyzes your osu! replays (stable and lazer) and suggests a better [OpenTabletD
 
 Suggestions are exported as OTD presets, so your current settings stay untouched.
 
-Status: in development. Setup and the replay list work; analysis and area suggestions are next.
+Status: in development. Setup, the replay list and the analysis work; area suggestions are next.
 
 ## Usage
 
@@ -16,7 +16,15 @@ Status: in development. Setup and the replay list work; analysis and area sugges
 2. **Replays** lists your osu!standard replays, newest first.
    - **Filter:** by last session, 7 days, 30 days or all time, or search map titles.
    - **Add replays:** with *Add files…* or by dropping `.osr` files onto the window.
-   - **Select:** tick the replays you want analysed.
+   - **Select:** tick the replays you want analysed, then press *Analyze*.
+3. **Analysis** measures how your jumps land, over every jump of at least three circle radii in the selected replays. It needs at least 5 replays. Each number comes with a 90% range; when that range includes "no change", the page says *no clear effect*.
+   - **Overshoot:** how much farther (+) or shorter (−) than intended your jumps travel.
+   - **Rotation:** how many degrees your moves come out turned clockwise (+) or counter-clockwise (−).
+   - **Horizontal ÷ vertical:** below 1 means horizontal moves fall shorter than vertical ones.
+   - **Shear:** a skew OpenTabletDriver can't correct; shown for information.
+   - **Error scatter:** each dot is one jump's error, along the jump (right = too far) and across it. The circle is the hit radius.
+   - **Polar plot:** the outline shows distance and turn per move direction, magnified 5×. The ring means no error, and an outline inside the ring means undershoot. Stopping at the circle's edge is left out, as in the Overshoot number, and directions with fewer than 10 jumps are left open.
+   - When you change the selection or setup afterwards, the page says so; press *Analyse selected again* to update.
 
 The first scan of a large library takes a minute or two; later scans only read new or changed files. Settings (`config.json`) and the scan cache (`library.json`) live in your app data folder under `osu-tablet-optimizer` (`%APPDATA%` on Windows, `~/.local/share` on Linux, `~/Library/Application Support` on macOS). OpenTabletDriver's own settings are only read.
 
