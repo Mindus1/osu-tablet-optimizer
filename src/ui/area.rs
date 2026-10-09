@@ -139,7 +139,8 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     });
     if elsewhere > 0 {
         notes = notes.push(text(format!(
-            "{elsewhere} of the analyzed replays were played with an older area. The suggestion              corrects your current area, so filter the Replays page to it and analyze again."
+            "{elsewhere} of the analyzed replays were played with an older area. The suggestion \
+             corrects your current area, so filter the Replays page to it and analyze again."
         )));
     }
     let settings = app.config.fit;
