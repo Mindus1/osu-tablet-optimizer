@@ -25,6 +25,9 @@ Most players set their tablet area by feel. When your jumps keep landing a littl
 
 osu! Tablet Optimizer measures them from hundreds or thousands of your own jumps, says how sure it is, and turns them into an area you can apply: a careful step to try today, and the full correction.
 
+> [!NOTE]
+> This project is entirely vibe-coded: the code, tests and docs were written by an AI assistant (Claude Code) under my direction, not by hand.
+
 ## What it does
 
 <table>
@@ -156,3 +159,7 @@ cargo run --release
 - Tablet dimensions in `src/core/tablets.tsv` come from [OpenTabletDriver](https://github.com/OpenTabletDriver/OpenTabletDriver)'s tablet configurations (LGPL-3.0).
 - The interface uses [Exo 2](https://github.com/googlefonts/Exo-2.0) (SIL Open Font License 1.1, see `assets/fonts/OFL.txt`).
 - Not affiliated with osu! or ppy Pty Ltd.
+
+## License
+
+[MIT](LICENSE)
