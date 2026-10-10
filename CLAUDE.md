@@ -2,8 +2,6 @@
 
 Desktop app (Rust + iced) for any osu! player using OpenTabletDriver. It analyzes osu! replays (stable and lazer) and suggests tablet-area changes: size, aspect ratio, rotation. Suggestions are exported as OTD presets.
 
-Design spec: `docs/superpowers/specs/2026-10-09-osu-tablet-optimizer-design.md`
-
 ## Commands
 
 ```sh
@@ -36,7 +34,7 @@ cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablet
 
 ## Git workflow
 
-Private repo `Mindus1/osu-tablet-optimizer`. `main` = releases only, `dev` = integration, `feature/<kebab-name>` branched from `dev`.
+Public repo `Mindus1/osu-tablet-optimizer`. `main` = releases only, `dev` = integration, `feature/<kebab-name>` branched from `dev`.
 Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `ci:`).
 
 ### Feature
