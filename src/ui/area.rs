@@ -200,7 +200,7 @@ pub fn view(app: &App) -> Element<'_, app::Message> {
     }
     content = content.push(
         row![
-            style::panel(preview_panel).width(FillPortion(5)),
+            style::panel(preview_panel).width(FillPortion(4)),
             column![style::panel(table), notes]
                 .spacing(16)
                 .width(FillPortion(6)),
@@ -266,7 +266,7 @@ fn table_row<'a>(
         }
     };
     row![
-        style::muted(label).width(70),
+        style::muted(label).width(64),
         cell(current),
         cell(capped),
         cell(full),
