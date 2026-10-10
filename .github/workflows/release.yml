@@ -43,12 +43,7 @@ jobs:
       - run: cargo build --release --locked
       - name: Package
         shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            mv target/release/osu-tablet-optimizer.exe "$ASSET.exe"
-          else
-            tar -czf "$ASSET.tar.gz" -C target/release osu-tablet-optimizer
-          fi
+        run: VERSION="${GITHUB_REF_NAME#v}" bash .github/package.sh
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET }}

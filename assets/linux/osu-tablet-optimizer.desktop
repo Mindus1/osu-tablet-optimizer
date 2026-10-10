@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=osu! Tablet Optimizer
+Comment=Fit your OpenTabletDriver area to how you aim
+Exec=osu-tablet-optimizer
+Icon=osu-tablet-optimizer
+Terminal=false
+Categories=Game;Utility;
+StartupWMClass=osu-tablet-optimizer

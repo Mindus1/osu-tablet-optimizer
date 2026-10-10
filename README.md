@@ -70,13 +70,21 @@ The 90% ranges come from resampling whole replays 200 times, because aim shifts 
 
 Each [release](https://github.com/Mindus1/osu-tablet-optimizer/releases) has a build for each platform:
 
-| Platform | File |
-|---|---|
-| Windows | `osu-tablet-optimizer-windows-x64.exe` |
-| Linux | `osu-tablet-optimizer-linux-x64.tar.gz` |
-| macOS (Apple silicon) | `osu-tablet-optimizer-macos-arm64.tar.gz` |
+| Platform | File | To start |
+|---|---|---|
+| Windows | `osu-tablet-optimizer-windows-x64.exe` | Run it. |
+| macOS (Apple silicon) | `osu-tablet-optimizer-macos-arm64.tar.gz` | Unpack it and move *osu! Tablet Optimizer* to Applications. |
+| Linux | `osu-tablet-optimizer-linux-x64.tar.gz` | Unpack it and run `osu-tablet-optimizer`. |
 
-The builds are unsigned, so Windows SmartScreen or macOS may ask before the first start. On macOS, allow it under *System Settings → Privacy & Security*.
+The builds aren't signed by a publisher, so Windows SmartScreen may ask before the first start. macOS blocks the app the first time; allow it under *System Settings → Privacy & Security → Open Anyway*.
+
+On Linux, the archive also holds a launcher entry with the app's icon. To add the app to your app menu:
+
+```sh
+install -Dm755 osu-tablet-optimizer ~/.local/bin/osu-tablet-optimizer
+install -Dm644 osu-tablet-optimizer.desktop ~/.local/share/applications/osu-tablet-optimizer.desktop
+install -Dm644 osu-tablet-optimizer.png ~/.local/share/icons/hicolor/256x256/apps/osu-tablet-optimizer.png
+```
 
 ## Quick start
 

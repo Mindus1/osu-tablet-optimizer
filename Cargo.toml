@@ -15,3 +15,7 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 rosu-map = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Finds the Windows SDK's resource compiler to embed the exe icon (build.rs).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

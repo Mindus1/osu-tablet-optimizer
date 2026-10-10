@@ -1,0 +1,43 @@
+name: Package test (temporary)
+
+on:
+  push:
+    branches: [feature/app-icon]
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: macos-latest
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      ASSET: osu-tablet-optimizer-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - name: Package
+        shell: bash
+        run: VERSION="0.2.2" bash .github/package.sh
+      - name: Inspect
+        shell: bash
+        run: |
+          ls -la "$ASSET".*
+          if [ "$RUNNER_OS" != "Windows" ]; then tar -tzvf "$ASSET.tar.gz"; fi
+      - name: Check the macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          app="osu! Tablet Optimizer.app"
+          plutil -lint "$app/Contents/Info.plist"
+          plutil -p "$app/Contents/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1
+          file "$app/Contents/Resources/AppIcon.icns"
+          sips -g pixelWidth -g pixelHeight "$app/Contents/Resources/AppIcon.icns"
