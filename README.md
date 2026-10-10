@@ -1,3 +1,6 @@
+> [!CAUTION]
+> **This project is entirely vibe-coded.** The code, tests and docs were written by an AI assistant (Claude Code) under my direction, not by hand.
+
 <p align="center">
   <img src="docs/images/logo.svg" width="104" alt="">
 </p>
@@ -24,9 +27,6 @@
 Most players set their tablet area by feel. When your jumps keep landing a little short, the area is a little too large; when they drift to one side, it's turned. Those biases are a few percent and a few tenths of a degree: too small to notice by feel, but steady enough to measure.
 
 osu! Tablet Optimizer measures them from hundreds or thousands of your own jumps, says how sure it is, and turns them into an area you can apply: a careful step to try today, and the full correction.
-
-> [!NOTE]
-> This project is entirely vibe-coded: the code, tests and docs were written by an AI assistant (Claude Code) under my direction, not by hand.
 
 ## What it does
 
