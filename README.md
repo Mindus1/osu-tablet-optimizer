@@ -154,6 +154,10 @@ Requires [Rust](https://rustup.rs) (stable).
 cargo run --release
 ```
 
+## Contributing
+
+Bug reports and ideas are welcome as [issues](https://github.com/Mindus1/osu-tablet-optimizer/issues/new/choose). Pull requests go to the `dev` branch.
+
 ## Credits
 
 - Tablet dimensions in `src/core/tablets.tsv` come from [OpenTabletDriver](https://github.com/OpenTabletDriver/OpenTabletDriver)'s tablet configurations (LGPL-3.0).
