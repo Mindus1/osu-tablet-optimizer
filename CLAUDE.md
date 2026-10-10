@@ -35,6 +35,7 @@ cargo run --example update_tablets -- <OTD checkout>   # refresh src/core/tablet
 ## Git workflow
 
 Public repo `Mindus1/osu-tablet-optimizer`. `main` = releases only, `dev` = integration, `feature/<kebab-name>` branched from `dev`.
+Rulesets: `main` and `dev` take changes only through PRs that pass CI (`main` merge commits, `dev` squash), and can't be force-pushed or deleted. Published releases are immutable.
 Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `ci:`).
 
 ### Feature
@@ -44,7 +45,7 @@ Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `
 3. `cargo fmt`, clippy, `cargo test`: all green.
 4. Refactor only this feature's new code, then re-run the tests.
 5. Check whether README.md needs updating (features, setup, usage) and update it in this branch.
-6. `gh pr create --base dev`, then `gh pr merge --squash --delete-branch`.
+6. `gh pr create --base dev`, wait for CI with `gh pr checks --watch` (retry if no checks are reported yet), then `gh pr merge --squash --delete-branch`.
 7. Clean up: `git switch dev && git pull && git fetch --prune`. Delete local branches whose upstream is gone (`git branch -vv | grep ': gone]'`) and any remote `feature/*` branch without an open PR.
 8. Ask the user: "Merge dev into main?" Every time. Never touch main without an explicit yes.
 
@@ -53,6 +54,6 @@ Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `
 1. Big refactor of the whole codebase (duplication, naming, module boundaries, dead code). Re-run tests.
 2. Propose the bump with a one-line reason and wait for confirmation: patch = fixes only, minor = new features, major = milestone/breaking.
 3. On `dev`: bump `version` in Cargo.toml, update README if needed, commit `chore: release vX.Y.Z`.
-4. `gh pr create --base main --head dev`, then `gh pr merge --merge`.
+4. `gh pr create --base main --head dev`, wait for CI with `gh pr checks --watch`, then `gh pr merge --merge`.
 5. On main: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z` (`-m` is required because tag signing is enabled). The workflow refuses tags whose version differs from `Cargo.toml` (pre-release suffixes like `-rc1` are allowed). The Release workflow builds Windows/Linux/macOS and publishes the GitHub release. Confirm with `gh run watch`.
-6. `git switch dev && git merge --ff-only main && git push`.
+6. `git switch dev && git merge --ff-only main && git push` (admins may bypass the `dev` ruleset for this push).
