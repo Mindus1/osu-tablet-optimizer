@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work, or a result looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: The release you downloaded, or the commit you built from.
+      placeholder: v0.2.2
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, Linux, macOS]
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: osu! client
+      options: [osu!stable, osu!lazer, Both, Not relevant]
+  - type: input
+    id: tablet
+    attributes:
+      label: Tablet and OpenTabletDriver version
+      placeholder: Wacom CTL-472, OpenTabletDriver 0.6.5
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: >-
+        If a replay is skipped, read wrong or crashes the app, attach the .osr file
+        (zip it first, GitHub doesn't accept .osr). For OpenTabletDriver problems,
+        attach its settings.json.
