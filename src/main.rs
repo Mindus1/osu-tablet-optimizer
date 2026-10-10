@@ -15,9 +15,9 @@ fn main() -> iced::Result {
         .font(include_bytes!("../assets/fonts/Exo2-SemiBold.ttf").as_slice())
         .default_font(ui::style::REGULAR)
         .window(window::Settings {
-            size: Size::new(1280.0, 760.0),
-            // Fits a 1080p screen at 150% scaling (1280 x 720 points, less taskbar and title bar)
-            // while the Replays table keeps room for map titles.
+            // Both fit a 1080p screen at 150% scaling (1280 x 720 points, less taskbar and title
+            // bar); the minimum still leaves the Replays table room for map titles.
+            size: Size::new(1240.0, 640.0),
             min_size: Some(Size::new(1180.0, 640.0)),
             ..window::Settings::default()
         })

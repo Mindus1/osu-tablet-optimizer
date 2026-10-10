@@ -14,16 +14,16 @@
   <a href="https://github.com/Mindus1/osu-tablet-optimizer/releases/latest"><img src="https://img.shields.io/badge/download-latest%20release-ff66ab?style=flat-square&labelColor=211b25" alt="Download the latest release"></a>
   <img src="https://img.shields.io/badge/osu!-stable%20%2B%20lazer-66ccff?style=flat-square&labelColor=211b25" alt="osu!stable and osu!lazer">
   <img src="https://img.shields.io/badge/OpenTabletDriver-0.6-b3d944?style=flat-square&labelColor=211b25" alt="OpenTabletDriver 0.6">
-  <img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux%20%7C%20macOS-ffcc22?style=flat-square&labelColor=211b25" alt="Windows, Linux and macOS">
+  <img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux%20%7C%20macOS%20(Apple%20silicon)-ffcc22?style=flat-square&labelColor=211b25" alt="Windows, Linux and macOS on Apple silicon">
 </p>
 
 <p align="center">
   <img src="docs/images/analysis.png" width="880" alt="The Analysis page: overshoot, rotation and horizontal-to-vertical ratio with 90% ranges, a scatter of jump errors around the hit circle, and an outline of distance and turn per move direction">
 </p>
 
-Most players set their tablet area by feel. When your jumps keep landing a little short, the area is a little too large; when they drift to one side, it's turned. Those biases are a few percent and a few tenths of a degree: too small to feel, big enough to cost accuracy.
+Most players set their tablet area by feel. When your jumps keep landing a little short, the area is a little too large; when they drift to one side, it's turned. Those biases are a few percent and a few tenths of a degree: too small to notice by feel, but steady enough to measure.
 
-osu! Tablet Optimizer measures them from thousands of your own jumps, says how sure it is, and turns them into an area you can apply: a careful step to try today, and the full correction.
+osu! Tablet Optimizer measures them from hundreds or thousands of your own jumps, says how sure it is, and turns them into an area you can apply: a careful step to try today, and the full correction.
 
 ## What it does
 
@@ -31,11 +31,11 @@ osu! Tablet Optimizer measures them from thousands of your own jumps, says how s
   <tr>
     <td width="50%" valign="top">
       <img src="docs/images/replays.png" alt="The Replays page: a table of recent plays with date, player, map, tablet area, mods and accuracy">
-      <p><strong>Finds your replays.</strong> osu!stable and osu!lazer are found on their own. Filter by session, date, tablet area or map, or drop <code>.osr</code> files onto the window.</p>
+      <p><strong>Finds your replays.</strong> Standard osu!stable and osu!lazer installs are found on their own; add any other folder in Setup. Filter by session, date, tablet area or map, or drop <code>.osr</code> files onto the window.</p>
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/area.png" alt="The Area page: the tablet with the current area and the suggested areas, and a table of width, height, rotation and center">
-      <p><strong>Suggests an area.</strong> A capped step (at most 3% and 2°) and the full fit, kept on your tablet, exported as an OpenTabletDriver preset. Your <code>settings.json</code> is never touched.</p>
+      <p><strong>Suggests an area.</strong> A capped step (at most 3% and 2°) and the full fit, kept on your tablet when its size is known, exported as an OpenTabletDriver preset. Your <code>settings.json</code> is never touched.</p>
     </td>
   </tr>
   <tr>
@@ -47,9 +47,9 @@ osu! Tablet Optimizer measures them from thousands of your own jumps, says how s
       <p><strong>Works with your setup.</strong></p>
       <ul>
         <li>Any tablet OpenTabletDriver supports; its size comes from OpenTabletDriver's tablet list.</li>
-        <li>Installed or portable OpenTabletDriver 0.6, absolute mode.</li>
+        <li>Installed or portable OpenTabletDriver 0.6, in absolute mode (or Artist Mode on Linux).</li>
         <li>Keyboard or pen-tap clicking: any press counts.</li>
-        <li>HR, EZ, Mirror and Difficulty Adjust are accounted for; mods that move objects are skipped.</li>
+        <li>Mods that only change looks or speed are fine, and HR, EZ, Mirror and Difficulty Adjust are accounted for. Replays with other mods, such as Relax, Autopilot or ones that move objects, are skipped.</li>
         <li>Everything stays on your computer. Nothing is uploaded.</li>
       </ul>
     </td>
@@ -58,13 +58,13 @@ osu! Tablet Optimizer measures them from thousands of your own jumps, says how s
 
 ## How it works
 
-For every jump of at least three circle radii, the app compares where you meant to go (from your cursor at the previous hit to the next circle) with where your cursor was when you pressed. Across all jumps it fits
+For every jump that starts at a circle and is at least three circle radii long (by default), the app compares where you meant to go, from your cursor at the previous hit to the next object, with where your cursor was when you pressed. Presses more than three radii off are left out as misses. Across all jumps it fits
 
 $$\text{actual} = B \cdot \text{intended} + k \cdot \text{direction}$$
 
 $B$ is your effective gain: how far, how turned and how stretched your moves come out. $k$ soaks up the habit of stopping at a circle's edge, which doesn't grow with jump distance the way a wrong area size does. $B$ then translates into OpenTabletDriver's width, height and rotation.
 
-The 90% ranges come from resampling whole replays 200 times, because aim varies between sessions more than between jumps. A change is only suggested when its range rules out "no change", and it needs at least 5 replays with 50 usable jumps.
+The 90% ranges come from resampling whole replays 200 times, because aim shifts from session to session, so the jumps of one session aren't independent. A change is only suggested when its range rules out "no change", and it needs at least 5 replays and 50 usable jumps in total.
 
 ## Download
 
@@ -102,7 +102,7 @@ The builds are unsigned, so Windows SmartScreen or macOS may ask before the firs
 - **Add replays:** with *Add files…* or by dropping `.osr` files onto the window.
 - **Area column:** the tablet area each replay was played with. When it's wrong, select the replays and pick the right one under *Assign selected to area…*; *By date* undoes that.
 
-**Analysis** measures every jump of at least three circle radii in the selected replays. Each number comes with a 90% range; when that range includes "no change", the page says *no clear effect*.
+**Analysis** measures the jumps in the selected replays (at least three circle radii long by default; you can change this in Setup). Overshoot, rotation and horizontal ÷ vertical come with a 90% range; when that range includes "no change", the page says *no clear effect*.
 - **Overshoot:** how much farther (+) or shorter (−) than intended your jumps travel.
 - **Rotation:** how many degrees your moves come out turned clockwise (+) or counter-clockwise (−).
 - **Horizontal ÷ vertical:** below 1 means horizontal moves fall shorter than vertical ones.
