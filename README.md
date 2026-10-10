@@ -1,3 +1,6 @@
+> [!CAUTION]
+> **This project is entirely vibe-coded.** The code, tests and docs were written by an AI assistant (Claude Code) under my direction, not by hand.
+
 <p align="center">
   <img src="docs/images/logo.svg" width="104" alt="">
 </p>
@@ -156,3 +159,7 @@ cargo run --release
 - Tablet dimensions in `src/core/tablets.tsv` come from [OpenTabletDriver](https://github.com/OpenTabletDriver/OpenTabletDriver)'s tablet configurations (LGPL-3.0).
 - The interface uses [Exo 2](https://github.com/googlefonts/Exo-2.0) (SIL Open Font License 1.1, see `assets/fonts/OFL.txt`).
 - Not affiliated with osu! or ppy Pty Ltd.
+
+## License
+
+[MIT](LICENSE)

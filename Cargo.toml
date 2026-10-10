@@ -2,6 +2,7 @@
 name = "osu-tablet-optimizer"
 version = "0.2.2"
 edition = "2024"
+license = "MIT"
 publish = false
 
 [dependencies]
