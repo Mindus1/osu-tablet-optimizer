@@ -8,6 +8,7 @@ use iced::{Size, window};
 
 // docs/images/logo.svg as 128 x 128 RGBA pixels, for the title bar and taskbar.
 const ICON: &[u8] = include_bytes!("../assets/icon/icon-128.rgba");
+const _: () = assert!(ICON.len() == 128 * 128 * 4);
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)

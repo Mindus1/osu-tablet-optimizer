@@ -5,5 +5,5 @@ Comment=Fit your OpenTabletDriver area to how you aim
 Exec=osu-tablet-optimizer
 Icon=osu-tablet-optimizer
 Terminal=false
-Categories=Game;Utility;
+Categories=Utility;
 StartupWMClass=osu-tablet-optimizer

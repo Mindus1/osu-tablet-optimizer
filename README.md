@@ -82,8 +82,10 @@ On Linux, the archive also holds a launcher entry with the app's icon. To add th
 
 ```sh
 install -Dm755 osu-tablet-optimizer ~/.local/bin/osu-tablet-optimizer
-install -Dm644 osu-tablet-optimizer.desktop ~/.local/share/applications/osu-tablet-optimizer.desktop
 install -Dm644 osu-tablet-optimizer.png ~/.local/share/icons/hicolor/256x256/apps/osu-tablet-optimizer.png
+mkdir -p ~/.local/share/applications
+sed "s|^Exec=.*|Exec=$HOME/.local/bin/osu-tablet-optimizer|" osu-tablet-optimizer.desktop \
+  > ~/.local/share/applications/osu-tablet-optimizer.desktop
 ```
 
 ## Quick start

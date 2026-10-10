@@ -14,13 +14,14 @@ case "$RUNNER_OS" in
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp target/release/osu-tablet-optimizer "$app/Contents/MacOS/"
     cp assets/icon/AppIcon.icns "$app/Contents/Resources/"
-    sed "s/VERSION/$VERSION/g" assets/macos/Info.plist > "$app/Contents/Info.plist"
-    codesign --force --deep --sign - "$app"
+    # Bundle versions are numbers only, so a prerelease suffix like -rc1 is dropped.
+    sed "s/VERSION/${VERSION%%-*}/g" assets/macos/Info.plist > "$app/Contents/Info.plist"
+    codesign --force --sign - "$app"
     tar -czf "$ASSET.tar.gz" "$app"
     ;;
   Linux)
     # Linux executables carry no icon; launchers take it from the .desktop file.
     tar -czf "$ASSET.tar.gz" -C target/release osu-tablet-optimizer \
-      -C ../../assets/linux osu-tablet-optimizer.desktop osu-tablet-optimizer.png
+      -C "$PWD/assets/linux" osu-tablet-optimizer.desktop osu-tablet-optimizer.png
     ;;
 esac
